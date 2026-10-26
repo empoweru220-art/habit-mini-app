@@ -4,90 +4,97 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Лаборатория привычек</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Подключаем Tailwind CSS для красивого дизайна -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Официальный скрипт Telegram Web App -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
-<body class="bg-slate-900 text-slate-100 font-sans p-4">
-    <div class="max-w-md mx-auto">
-        <header class="text-center my-6">
-            <h1 class="text-2xl font-bold">🧪 Лаборатория привычек</h1>
-            <p class="text-sm text-slate-400 mt-1">Выбери цель на 7 дней и брось вызов</p>
-        </header>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between p-4">
 
+    <!-- Шапкa приложения -->
+    <div class="max-w-md mx-auto w-full pt-4">
+        <div class="text-center mb-6">
+            <span class="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-3 py-1 rounded-full border border-emerald-500/20">
+                ⚡️ 7-дневная матрица
+            </span>
+            <h1 class="text-2xl font-bold mt-2">Лаборатория привычек</h1>
+            <p class="text-slate-400 text-sm mt-1">Выбери цель и докажи дисциплину себе</p>
+        </div>
+
+        <!-- Список привычек -->
         <div id="habits-container" class="space-y-3">
-            <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition" onclick="selectHabit('detox')">
+            <div onclick="selectHabit('💧 Водный баланс (2л)')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
                 <div>
-                    <h3 class="font-semibold text-lg">📵 Цифровой детокс</h3>
-                    <p class="text-xs text-slate-400">Меньше телефона и соцсетей</p>
+                    <h3 class="font-semibold">💧 Водный баланс</h3>
+                    <p class="text-xs text-slate-400">Пить чистую воду вовремя</p>
                 </div>
                 <span class="text-emerald-400 font-bold">→</span>
             </div>
 
-            <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition" onclick="selectHabit('sleep')">
+            <div onclick="selectHabit('📵 Цифровой детокс')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
                 <div>
-                    <h3 class="font-semibold text-lg">😴 Ранний сон</h3>
-                    <p class="text-xs text-slate-400">Ложиться спать до 23:00</p>
+                    <h3 class="font-semibold">📵 Цифровой детокс</h3>
+                    <p class="text-xs text-slate-400">Без соцсетей за час до сна</p>
                 </div>
                 <span class="text-emerald-400 font-bold">→</span>
             </div>
 
-            <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition" onclick="selectHabit('reading')">
+            <div onclick="selectHabit('🌙 Ранний сон (до 23:00)')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
                 <div>
-                    <h3 class="font-semibold text-lg">📚 Чтение</h3>
-                    <p class="text-xs text-slate-400">По 15–20 минут в день</p>
+                    <h3 class="font-semibold">🌙 Ранний сон</h3>
+                    <p class="text-xs text-slate-400">Стабильный режим отдыха</p>
                 </div>
                 <span class="text-emerald-400 font-bold">→</span>
             </div>
 
-            <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition" onclick="selectHabit('water')">
+            <div onclick="selectHabit('📖 Чтение (20 минут)')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
                 <div>
-                    <h3 class="font-semibold text-lg">💧 Питьевой режим</h3>
-                    <p class="text-xs text-slate-400">2 литра чистой воды</p>
+                    <h3 class="font-semibold">📖 Чтение литературы</h3>
+                    <p class="text-xs text-slate-400">Развитие мышления ежедневно</p>
                 </div>
                 <span class="text-emerald-400 font-bold">→</span>
             </div>
 
-            <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition" onclick="selectHabit('sport')">
+            <div onclick="selectHabit('🎯 Фокус / Спорт')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
                 <div>
-                    <h3 class="font-semibold text-lg">🏃‍♂️ Фокус и движение</h3>
-                    <p class="text-xs text-slate-400">Зарядка или 30 мин активности</p>
+                    <h3 class="font-semibold">🎯 Фокус / Тренировка</h3>
+                    <p class="text-xs text-slate-400">Энергия и физическая форма</p>
                 </div>
                 <span class="text-emerald-400 font-bold">→</span>
             </div>
         </div>
 
-        <div id="action-section" class="mt-6 hidden text-center">
-            <div class="p-4 bg-emerald-900/40 border border-emerald-500 rounded-xl mb-4">
-                <p id="selected-text" class="text-sm font-medium text-emerald-200"></p>
-            </div>
-            <button onclick="startDuel()" class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl transition">
-                Найти соперника в пару ⚔️
-            </button>
+        <!-- Экран загрузки / поиска (скрыт по умолчанию) -->
+        <div id="loader-screen" class="hidden text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-emerald-500 border-t-transparent mb-4"></div>
+            <h2 id="loader-text" class="text-lg font-semibold">Ищем соперника для дуэли...</h2>
+            <p class="text-xs text-slate-400 mt-2">Анализируем активных участников сети</p>
         </div>
     </div>
 
+    <!-- Футер -->
+    <div class="text-center text-xs text-slate-500 pb-2">
+        Habit Lab v1.0 • Telegram Mini App
+    </div>
+
     <script>
-        let tg = window.Telegram.WebApp;
-        tg.expand();
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // Разворачиваем на весь экран
 
-        let chosenHabit = "";
+        function selectHabit(habitName) {
+            // Скрываем список привычек, показываем экран поиска
+            document.getElementById('habits-container').classList.add('hidden');
+            document.getElementById('loader-screen').classList.remove('hidden');
 
-        function selectHabit(key) {
-            chosenHabit = key;
-            document.getElementById('action-section').classList.remove('hidden');
-            const names = {
-                'detox': 'Цифровой детокс',
-                'sleep': 'Ранний сон',
-                'reading': 'Чтение',
-                'water': 'Питьевой режим',
-                'sport': 'Фокус и движение'
-            };
-            document.getElementById('selected-text').innerText = `Выбрана цель: "${names[key]}" на 7 дней. Готовы запустить дуэль?`;
-        }
-
-        function startDuel() {
-            tg.sendData(JSON.stringify({ habit: chosenHabit }));
-            tg.close();
+            // Симулируем поиск соперника (2.5 секунды)
+            setTimeout(() => {
+                document.getElementById('loader-text').innerText = "Соперник не найден. Активирован соло-режим с ИИ!";
+                
+                setTimeout(() => {
+                    // Передаем данные боту и закрываем приложение
+                    tg.sendData(habitName);
+                }, 1200);
+            }, 2500);
         }
     </script>
 </body>
