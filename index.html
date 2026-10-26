@@ -21,7 +21,7 @@
             <p id="subtitle" class="text-slate-400 text-sm mt-1">Выбери цель и докажи дисциплину себе</p>
         </div>
 
-        <!-- Список привычек (по умолчанию скрыт до проверки памяти) -->
+        <!-- Список привычек -->
         <div id="habits-container" class="space-y-3 hidden">
             <div onclick="selectHabit('💧 Водный баланс (2л)')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
                 <div>
@@ -70,13 +70,16 @@
             <p class="text-xs text-slate-400">Загружаем профиль...</p>
         </div>
 
-        <!-- Экран успешного старта / ЛК -->
-        <div id="success-screen" class="hidden bg-slate-800/90 border border-emerald-500/40 p-6 rounded-2xl text-center mt-4 shadow-xl">
-            <div class="text-4xl mb-2">🚀</div>
-            <h2 class="text-xl font-bold text-emerald-400">Матрица активна!</h2>
-            <p id="selected-habit-title" class="text-sm font-semibold text-slate-200 mt-1"></p>
+        <!-- Личный кабинет / Активный марафон -->
+        <div id="success-screen" class="hidden bg-slate-800/90 border border-emerald-500/40 p-5 rounded-2xl shadow-xl space-y-4">
+            <div class="text-center">
+                <div class="text-3xl mb-1">🚀</div>
+                <h2 class="text-lg font-bold text-emerald-400">Матрица активна</h2>
+                <p id="selected-habit-title" class="text-sm font-semibold text-slate-200 mt-1"></p>
+            </div>
             
-            <div class="bg-slate-900/60 p-4 rounded-xl mt-4 text-left border border-slate-700">
+            <!-- Прогресс -->
+            <div class="bg-slate-900/60 p-3.5 rounded-xl border border-slate-700">
                 <div class="flex justify-between text-xs text-slate-400 mb-1">
                     <span>День 1 из 7</span>
                     <span class="text-emerald-400 font-bold">14% выполнено</span>
@@ -84,12 +87,25 @@
                 <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
                     <div class="bg-emerald-500 h-full w-[14%]"></div>
                 </div>
-                <p class="text-xs text-slate-300 mt-3">🤖 <b>Соло-режим с ИИ:</b> Челлендж запущен. Выполняй задачу ежедневно.</p>
             </div>
 
-            <button onclick="resetHabit()" class="mt-6 w-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold py-2.5 rounded-xl text-xs transition">
-                Сбросить привычку (начать заново)
-            </button>
+            <!-- Инструкция "Что дальше?" -->
+            <div class="bg-emerald-500/10 border border-emerald-500/20 p-3.5 rounded-xl text-xs text-slate-300 space-y-2">
+                <p class="font-semibold text-emerald-400">📌 Что происходит дальше?</p>
+                <p>1. Сегодня выполняйте выбранную задачу в течение дня.</p>
+                <p>2. Бот пришлет вам напоминание и запросит подтверждение выполнения.</p>
+                <p>3. Проходите все 7 дней под контролем ИИ-наставника!</p>
+            </div>
+
+            <!-- Удобные кнопки навигации -->
+            <div class="space-y-2 pt-2">
+                <button onclick="closeApp()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-3 rounded-xl transition shadow-lg shadow-emerald-500/20 text-sm">
+                    Вернуться в чат с ботом
+                </button>
+                <button onclick="resetHabit()" class="w-full bg-transparent hover:bg-slate-700/50 text-slate-500 hover:text-rose-400 font-medium py-2 rounded-xl transition text-xs">
+                    Сбросить привычку и выбрать другую
+                </button>
+            </div>
         </div>
     </div>
 
@@ -102,42 +118,29 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // При открытии приложения проверяем облако Telegram на наличие сохраненной привычки
         window.addEventListener('DOMContentLoaded', () => {
             if (tg.CloudStorage) {
                 tg.CloudStorage.getItem('user_habit', (err, value) => {
                     document.getElementById('loading-check').classList.add('hidden');
                     if (!err && value) {
-                        // Если привычка найдена — показываем сразу личный кабинет
                         showDashboard(value);
                     } else {
-                        // Если пусто — показываем список выбора
                         document.getElementById('habits-container').classList.remove('hidden');
                     }
                 });
             } else {
-                // Запасной вариант, если облако недоступно
                 document.getElementById('loading-check').classList.add('hidden');
                 document.getElementById('habits-container').classList.remove('hidden');
             }
         });
 
         function selectHabit(habitName) {
-            // Сохраняем выбор в Telegram CloudStorage
             if (tg.CloudStorage) {
-                tg.CloudStorage.setItem('user_habit', habitName, (err, saved) => {
-                    if (saved) {
-                        console.log('Привычка сохранена в облаке');
-                    }
-                });
+                tg.CloudStorage.setItem('user_habit', habitName, (err, saved) => {});
             }
-
-            // Дублируем отправку данных боту
             if (tg && tg.sendData) {
                 try { tg.sendData(habitName); } catch (e) {}
             }
-
-            // Переключаем интерфейс на экран личного кабинета
             showDashboard(habitName);
         }
 
@@ -149,8 +152,16 @@
             document.getElementById('success-screen').classList.remove('hidden');
         }
 
+        function closeApp() {
+            if (tg && tg.close) {
+                tg.close();
+            } else {
+                window.close();
+            }
+        }
+
         function resetHabit() {
-            if (confirm("Вы уверены, что хотите сбросить текущий прогресс?")) {
+            if (confirm("Вы уверены, что хотите сбросить текущий прогресс и выбрать новую цель?")) {
                 if (tg.CloudStorage) {
                     tg.CloudStorage.removeItem('user_habit', () => {
                         location.reload();
