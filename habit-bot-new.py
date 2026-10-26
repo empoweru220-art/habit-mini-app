@@ -1,12 +1,15 @@
 import asyncio
 import logging
 import sqlite3
+import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # Токен вашего бота от BotFather
-TOKEN = ""
+TOKEN = os.getenv("BOT_TOKEN", "")
+if not TOKEN:
+    raise RuntimeError("Не задана переменная окружения BOT_TOKEN")
 WEB_APP_URL = "https://joyful-cannoli-d85e2a.netlify.app"
 
 logging.basicConfig(level=logging.INFO)
