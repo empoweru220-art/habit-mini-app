@@ -173,18 +173,13 @@
             }
         }
 
-        function resetHabit() {
-            if (confirm("Вы уверены, что хотите сбросить текущий прогресс и выбрать новую цель?")) {
-                if (tg.CloudStorage) {
-                    // Перезаписываем пустое значение, чтобы точно очистить память
-                    tg.CloudStorage.setItem('user_habit', '', (err, saved) => {
-                        location.reload();
-                    });
-                } else {
-                    location.reload();
-                }
-            }
+       function resetHabit() {
+    if (confirm("Вы уверены, что хотите сбросить текущий прогресс и выбрать новую цель?")) {
+        if (tg && tg.sendData) {
+            tg.sendData("__RESET_HABIT__");
         }
+    }
+}
     </script>
 </body>
 </html>
