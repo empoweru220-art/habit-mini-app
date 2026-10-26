@@ -64,11 +64,33 @@
             </div>
         </div>
 
-        <!-- Экран статуса (показывает результат перед закрытием) -->
+        <!-- Экран загрузки / поиска -->
         <div id="loader-screen" class="hidden text-center py-12">
             <div id="spinner" class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-emerald-500 border-t-transparent mb-4"></div>
             <h2 id="loader-text" class="text-lg font-semibold">Ищем соперника для дуэли...</h2>
             <p id="loader-subtext" class="text-xs text-slate-400 mt-2">Анализируем активных участников сети</p>
+        </div>
+
+        <!-- Экран успешного старта (Матрица активирована) -->
+        <div id="success-screen" class="hidden bg-slate-800/90 border border-emerald-500/40 p-6 rounded-2xl text-center mt-4 shadow-xl">
+            <div class="text-4xl mb-2">🚀</div>
+            <h2 class="text-xl font-bold text-emerald-400">Матрица запущена!</h2>
+            <p id="selected-habit-title" class="text-sm font-semibold text-slate-200 mt-1"></p>
+            
+            <div class="bg-slate-900/60 p-4 rounded-xl mt-4 text-left border border-slate-700">
+                <div class="flex justify-between text-xs text-slate-400 mb-1">
+                    <span>День 1 из 7</span>
+                    <span class="text-emerald-400 font-bold">14% выполнено</span>
+                </div>
+                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div class="bg-emerald-500 h-full w-[14%]"></div>
+                </div>
+                <p class="text-xs text-slate-300 mt-3">🤖 <b>Соло-режим с ИИ активен:</b> Первый отчет ждем завтра. Дисциплина — это победа над собой.</p>
+            </div>
+
+            <button onclick="closeApp()" class="mt-6 w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-3 rounded-xl transition shadow-lg shadow-emerald-500/20">
+                В бой! (Закрыть окно)
+            </button>
         </div>
     </div>
 
@@ -82,25 +104,31 @@
         tg.expand(); // Разворачиваем на весь экран
 
         function selectHabit(habitName) {
-            // Скрываем список, показываем экран статуса
+            // Скрываем список, показываем экран поиска
             document.getElementById('habits-container').classList.add('hidden');
             document.getElementById('loader-screen').classList.remove('hidden');
 
-            // Шаг 1: Имитируем поиск через 1.5 секунды
+            // Шаг 1: Имитируем поиск через 2 секунды
             setTimeout(() => {
-                document.getElementById('spinner').classList.add('hidden'); // Убираем крутилку
-                document.getElementById('loader-text').innerText = "🤖 Соперник не найден";
-                document.getElementById('loader-subtext').innerText = "Активирован соло-режим с ИИ. Передаем данные боту...";
+                document.getElementById('loader-screen').classList.add('hidden');
                 
-                // Шаг 2: Еще через 1.5 секунды отправляем данные боту и закрываем окно
-                setTimeout(() => {
-                    if (tg && tg.sendData) {
-                        tg.sendData(habitName);
-                    } else {
-                        tg.close();
-                    }
-                }, 1500);
+                // Показываем экран успешного старта прямо в приложении
+                document.getElementById('selected-habit-title').innerText = "Цель: " + habitName;
+                document.getElementById('success-screen').classList.remove('hidden');
+
+                // Дублируем отправку данных боту (на всякий случай)
+                if (tg && tg.sendData) {
+                    try { tg.sendData(habitName); } catch (e) {}
+                }
             }, 2000);
+        }
+
+        function closeApp() {
+            if (tg && tg.close) {
+                tg.close();
+            } else {
+                window.close();
+            }
         }
     </script>
 </body>
