@@ -18,11 +18,11 @@
                 ⚡️ 7-дневная матрица
             </span>
             <h1 class="text-2xl font-bold mt-2">Лаборатория привычек</h1>
-            <p class="text-slate-400 text-sm mt-1">Выбери цель и докажи дисциплину себе</p>
+            <p id="subtitle" class="text-slate-400 text-sm mt-1">Выбери цель и докажи дисциплину себе</p>
         </div>
 
-        <!-- Список привычек -->
-        <div id="habits-container" class="space-y-3">
+        <!-- Список привычек (по умолчанию скрыт до проверки памяти) -->
+        <div id="habits-container" class="space-y-3 hidden">
             <div onclick="selectHabit('💧 Водный баланс (2л)')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
                 <div>
                     <h3 class="font-semibold">💧 Водный баланс</h3>
@@ -64,17 +64,16 @@
             </div>
         </div>
 
-        <!-- Экран загрузки / поиска -->
-        <div id="loader-screen" class="hidden text-center py-12">
-            <div id="spinner" class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-emerald-500 border-t-transparent mb-4"></div>
-            <h2 id="loader-text" class="text-lg font-semibold">Ищем соперника для дуэли...</h2>
-            <p id="loader-subtext" class="text-xs text-slate-400 mt-2">Анализируем активных участников сети</p>
+        <!-- Экран загрузки проверки памяти -->
+        <div id="loading-check" class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent mb-3"></div>
+            <p class="text-xs text-slate-400">Загружаем профиль...</p>
         </div>
 
-        <!-- Экран успешного старта (Матрица активирована) -->
+        <!-- Экран успешного старта / ЛК -->
         <div id="success-screen" class="hidden bg-slate-800/90 border border-emerald-500/40 p-6 rounded-2xl text-center mt-4 shadow-xl">
             <div class="text-4xl mb-2">🚀</div>
-            <h2 class="text-xl font-bold text-emerald-400">Матрица запущена!</h2>
+            <h2 class="text-xl font-bold text-emerald-400">Матрица активна!</h2>
             <p id="selected-habit-title" class="text-sm font-semibold text-slate-200 mt-1"></p>
             
             <div class="bg-slate-900/60 p-4 rounded-xl mt-4 text-left border border-slate-700">
@@ -85,11 +84,11 @@
                 <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
                     <div class="bg-emerald-500 h-full w-[14%]"></div>
                 </div>
-                <p class="text-xs text-slate-300 mt-3">🤖 <b>Соло-режим с ИИ активен:</b> Первый отчет ждем завтра. Дисциплина — это победа над собой.</p>
+                <p class="text-xs text-slate-300 mt-3">🤖 <b>Соло-режим с ИИ:</b> Челлендж запущен. Выполняй задачу ежедневно.</p>
             </div>
 
-            <button onclick="closeApp()" class="mt-6 w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-3 rounded-xl transition shadow-lg shadow-emerald-500/20">
-                В бой! (Закрыть окно)
+            <button onclick="resetHabit()" class="mt-6 w-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold py-2.5 rounded-xl text-xs transition">
+                Сбросить привычку (начать заново)
             </button>
         </div>
     </div>
@@ -101,33 +100,64 @@
 
     <script>
         const tg = window.Telegram.WebApp;
-        tg.expand(); // Разворачиваем на весь экран
+        tg.expand();
+
+        // При открытии приложения проверяем облако Telegram на наличие сохраненной привычки
+        window.addEventListener('DOMContentLoaded', () => {
+            if (tg.CloudStorage) {
+                tg.CloudStorage.getItem('user_habit', (err, value) => {
+                    document.getElementById('loading-check').classList.add('hidden');
+                    if (!err && value) {
+                        // Если привычка найдена — показываем сразу личный кабинет
+                        showDashboard(value);
+                    } else {
+                        // Если пусто — показываем список выбора
+                        document.getElementById('habits-container').classList.remove('hidden');
+                    }
+                });
+            } else {
+                // Запасной вариант, если облако недоступно
+                document.getElementById('loading-check').classList.add('hidden');
+                document.getElementById('habits-container').classList.remove('hidden');
+            }
+        });
 
         function selectHabit(habitName) {
-            // Скрываем список, показываем экран поиска
-            document.getElementById('habits-container').classList.add('hidden');
-            document.getElementById('loader-screen').classList.remove('hidden');
+            // Сохраняем выбор в Telegram CloudStorage
+            if (tg.CloudStorage) {
+                tg.CloudStorage.setItem('user_habit', habitName, (err, saved) => {
+                    if (saved) {
+                        console.log('Привычка сохранена в облаке');
+                    }
+                });
+            }
 
-            // Шаг 1: Имитируем поиск через 2 секунды
-            setTimeout(() => {
-                document.getElementById('loader-screen').classList.add('hidden');
-                
-                // Показываем экран успешного старта прямо в приложении
-                document.getElementById('selected-habit-title').innerText = "Цель: " + habitName;
-                document.getElementById('success-screen').classList.remove('hidden');
+            // Дублируем отправку данных боту
+            if (tg && tg.sendData) {
+                try { tg.sendData(habitName); } catch (e) {}
+            }
 
-                // Дублируем отправку данных боту (на всякий случай)
-                if (tg && tg.sendData) {
-                    try { tg.sendData(habitName); } catch (e) {}
-                }
-            }, 2000);
+            // Переключаем интерфейс на экран личного кабинета
+            showDashboard(habitName);
         }
 
-        function closeApp() {
-            if (tg && tg.close) {
-                tg.close();
-            } else {
-                window.close();
+        function showDashboard(habitName) {
+            document.getElementById('loading-check').classList.add('hidden');
+            document.getElementById('habits-container').classList.add('hidden');
+            document.getElementById('subtitle').innerText = "Ваш личный кабинет марафона";
+            document.getElementById('selected-habit-title').innerText = "Цель: " + habitName;
+            document.getElementById('success-screen').classList.remove('hidden');
+        }
+
+        function resetHabit() {
+            if (confirm("Вы уверены, что хотите сбросить текущий прогресс?")) {
+                if (tg.CloudStorage) {
+                    tg.CloudStorage.removeItem('user_habit', () => {
+                        location.reload();
+                    });
+                } else {
+                    location.reload();
+                }
             }
         }
     </script>
