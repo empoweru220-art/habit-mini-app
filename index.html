@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Лаборатория привычек</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans p-4">
+    <div class="max-w-md mx-auto">
+        <header class="text-center my-6">
+            <h1 class="text-2xl font-bold">🧪 Лаборатория привычек</h1>
+            <p class="text-sm text-slate-400 mt-1">Выбери цель на 7 дней и брось вызов</p>
+        </header>
+
+        <div id="habits-container" class="space-y-3">
+            <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition" onclick="selectHabit('detox')">
+                <div>
+                    <h3 class="font-semibold text-lg">📵 Цифровой детокс</h3>
+                    <p class="text-xs text-slate-400">Меньше телефона и соцсетей</p>
+                </div>
+                <span class="text-emerald-400 font-bold">→</span>
+            </div>
+
+            <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition" onclick="selectHabit('sleep')">
+                <div>
+                    <h3 class="font-semibold text-lg">😴 Ранний сон</h3>
+                    <p class="text-xs text-slate-400">Ложиться спать до 23:00</p>
+                </div>
+                <span class="text-emerald-400 font-bold">→</span>
+            </div>
+
+            <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition" onclick="selectHabit('reading')">
+                <div>
+                    <h3 class="font-semibold text-lg">📚 Чтение</h3>
+                    <p class="text-xs text-slate-400">По 15–20 минут в день</p>
+                </div>
+                <span class="text-emerald-400 font-bold">→</span>
+            </div>
+
+            <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition" onclick="selectHabit('water')">
+                <div>
+                    <h3 class="font-semibold text-lg">💧 Питьевой режим</h3>
+                    <p class="text-xs text-slate-400">2 литра чистой воды</p>
+                </div>
+                <span class="text-emerald-400 font-bold">→</span>
+            </div>
+
+            <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-emerald-500 transition" onclick="selectHabit('sport')">
+                <div>
+                    <h3 class="font-semibold text-lg">🏃‍♂️ Фокус и движение</h3>
+                    <p class="text-xs text-slate-400">Зарядка или 30 мин активности</p>
+                </div>
+                <span class="text-emerald-400 font-bold">→</span>
+            </div>
+        </div>
+
+        <div id="action-section" class="mt-6 hidden text-center">
+            <div class="p-4 bg-emerald-900/40 border border-emerald-500 rounded-xl mb-4">
+                <p id="selected-text" class="text-sm font-medium text-emerald-200"></p>
+            </div>
+            <button onclick="startDuel()" class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl transition">
+                Найти соперника в пару ⚔️
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+
+        let chosenHabit = "";
+
+        function selectHabit(key) {
+            chosenHabit = key;
+            document.getElementById('action-section').classList.remove('hidden');
+            const names = {
+                'detox': 'Цифровой детокс',
+                'sleep': 'Ранний сон',
+                'reading': 'Чтение',
+                'water': 'Питьевой режим',
+                'sport': 'Фокус и движение'
+            };
+            document.getElementById('selected-text').innerText = `Выбрана цель: "${names[key]}" на 7 дней. Готовы запустить дуэль?`;
+        }
+
+        function startDuel() {
+            tg.sendData(JSON.stringify({ habit: chosenHabit }));
+            tg.close();
+        }
+    </script>
+</body>
+</html>
