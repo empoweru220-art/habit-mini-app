@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Лаборатория привычек</title>
-    <!-- Подключаем Tailwind CSS для красивого дизайна -->
+    <!-- Подключаем Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Официальный скрипт Telegram Web App -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between p-4">
 
-    <!-- Шапкa приложения -->
+    <!-- Шапка приложения -->
     <div class="max-w-md mx-auto w-full pt-4">
         <div class="text-center mb-6">
             <span class="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-3 py-1 rounded-full border border-emerald-500/20">
@@ -64,11 +64,11 @@
             </div>
         </div>
 
-        <!-- Экран загрузки / поиска (скрыт по умолчанию) -->
+        <!-- Экран статуса (показывает результат перед закрытием) -->
         <div id="loader-screen" class="hidden text-center py-12">
-            <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-emerald-500 border-t-transparent mb-4"></div>
+            <div id="spinner" class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-emerald-500 border-t-transparent mb-4"></div>
             <h2 id="loader-text" class="text-lg font-semibold">Ищем соперника для дуэли...</h2>
-            <p class="text-xs text-slate-400 mt-2">Анализируем активных участников сети</p>
+            <p id="loader-subtext" class="text-xs text-slate-400 mt-2">Анализируем активных участников сети</p>
         </div>
     </div>
 
@@ -82,19 +82,25 @@
         tg.expand(); // Разворачиваем на весь экран
 
         function selectHabit(habitName) {
-            // Скрываем список привычек, показываем экран поиска
+            // Скрываем список, показываем экран статуса
             document.getElementById('habits-container').classList.add('hidden');
             document.getElementById('loader-screen').classList.remove('hidden');
 
-            // Симулируем поиск соперника (2.5 секунды)
+            // Шаг 1: Имитируем поиск через 1.5 секунды
             setTimeout(() => {
-                document.getElementById('loader-text').innerText = "Соперник не найден. Активирован соло-режим с ИИ!";
+                document.getElementById('spinner').classList.add('hidden'); // Убираем крутилку
+                document.getElementById('loader-text').innerText = "🤖 Соперник не найден";
+                document.getElementById('loader-subtext').innerText = "Активирован соло-режим с ИИ. Передаем данные боту...";
                 
+                // Шаг 2: Еще через 1.5 секунды отправляем данные боту и закрываем окно
                 setTimeout(() => {
-                    // Передаем данные боту и закрываем приложение
-                    tg.sendData(habitName);
-                }, 1200);
-            }, 2500);
+                    if (tg && tg.sendData) {
+                        tg.sendData(habitName);
+                    } else {
+                        tg.close();
+                    }
+                }, 1500);
+            }, 2000);
         }
     </script>
 </body>
