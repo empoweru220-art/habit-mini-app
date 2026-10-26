@@ -89,15 +89,13 @@
                 </div>
             </div>
 
-            <!-- Инструкция "Что дальше?" -->
+            <!-- Уникальное описание и план для каждой привычки -->
             <div class="bg-emerald-500/10 border border-emerald-500/20 p-3.5 rounded-xl text-xs text-slate-300 space-y-2">
-                <p class="font-semibold text-emerald-400">📌 Что происходит дальше?</p>
-                <p>1. Сегодня выполняйте выбранную задачу в течение дня.</p>
-                <p>2. Бот пришлет вам напоминание и запросит подтверждение выполнения.</p>
-                <p>3. Проходите все 7 дней под контролем ИИ-наставника!</p>
+                <p class="font-semibold text-emerald-400">📌 План на 7 дней:</p>
+                <p id="habit-specific-instructions">Загрузка инструкций...</p>
             </div>
 
-            <!-- Удобные кнопки навигации -->
+            <!-- Навигация -->
             <div class="space-y-2 pt-2">
                 <button onclick="closeApp()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-3 rounded-xl transition shadow-lg shadow-emerald-500/20 text-sm">
                     Вернуться в чат с ботом
@@ -118,6 +116,15 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
+        // База уникальных инструкций для каждой привычки
+        const habitInstructions = {
+            '💧 Водный баланс (2л)': 'Выпивайте по 250 мл воды каждые 2 часа. Сегодня ваша цель — распределить объём равномерно и зафиксировать вечерний результат.',
+            '📵 Цифровой детокс': 'Уберите телефон из спальни ровно за 1 час до сна. Замените ленту соцсетей на бумажную книгу или спокойную растяжку.',
+            '🌙 Ранний сон (до 23:00)': 'Подготовьте спальню заранее: проветрите комнату и выключите яркий свет в 22:30. Ложимся вовремя.',
+            '📖 Чтение (20 минут)': 'Выделите 20 минут в тишине без отвлечений на мессенджеры. Читайте осознанно, фиксируя главные мысли.',
+            '🎯 Фокус / Спорт': 'Проведите короткую разминку или уделите 20 минут фокус-задаче без переключений. Главное — регулярность импульса.'
+        };
+
         window.addEventListener('DOMContentLoaded', () => {
             if (tg.CloudStorage) {
                 tg.CloudStorage.getItem('user_habit', (err, value) => {
@@ -136,6 +143,7 @@
 
         function selectHabit(habitName) {
             if (tg.CloudStorage) {
+                // Сохраняем надежно через CloudStorage
                 tg.CloudStorage.setItem('user_habit', habitName, (err, saved) => {});
             }
             if (tg && tg.sendData) {
@@ -149,6 +157,11 @@
             document.getElementById('habits-container').classList.add('hidden');
             document.getElementById('subtitle').innerText = "Ваш личный кабинет марафона";
             document.getElementById('selected-habit-title').innerText = "Цель: " + habitName;
+            
+            // Подставляем уникальную инструкцию для выбранной привычки
+            const instruction = habitInstructions[habitName] || 'Выполняйте выбранное действие ежедневно под контролем ИИ.';
+            document.getElementById('habit-specific-instructions').innerText = instruction;
+
             document.getElementById('success-screen').classList.remove('hidden');
         }
 
@@ -163,7 +176,8 @@
         function resetHabit() {
             if (confirm("Вы уверены, что хотите сбросить текущий прогресс и выбрать новую цель?")) {
                 if (tg.CloudStorage) {
-                    tg.CloudStorage.removeItem('user_habit', () => {
+                    // Перезаписываем пустое значение, чтобы точно очистить память
+                    tg.CloudStorage.setItem('user_habit', '', (err, saved) => {
                         location.reload();
                     });
                 } else {
