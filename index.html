@@ -145,19 +145,44 @@
             instructions[habit] || 'Выбери небольшой выполнимый шаг на сегодня.';
     }
 
-    function sendAction(payload) {
-        if (!tg || typeof tg.sendData !== 'function') {
-            setStatus('Открой приложение через кнопку Telegram-бота, чтобы передавать данные.');
-            return;
+    async function sendAction(payload) {
+    if (!tg || !tg.initData) {
+        setStatus('Открой Mini App через Telegram, чтобы авторизоваться.');
+        return;
+    }
+
+    const API_URL = 'https://protocols-teacher-today-exterior.trycloudflare.com';
+
+    try {
+        setStatus('Обрабатываю запрос...');
+
+        const response = await fetch(`${API_URL}/api/action`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                initData: tg.initData,
+                ...payload
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.detail || 'Ошибка сервера');
         }
 
-        try {
-            tg.sendData(JSON.stringify(payload));
-        } catch (error) {
-            console.error('Ошибка отправки:', error);
-            setStatus('Не удалось отправить действие. Попробуй открыть Mini App заново.');
+        setStatus(result.message || 'Данные успешно обработаны.');
+
+        if (result.program) {
+            console.log('Прогресс из базы:', result.program);
         }
+    } catch (error) {
+        console.error('Ошибка API:', error);
+        setStatus('Не удалось выполнить действие: ' + error.message);
     }
+}
 
     function selectHabit(habit) {
         selectedHabit = habit;
