@@ -4,12 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f172a">
     <title>Лаборатория привычек</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between p-4">
 
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between p-4">
     <main class="max-w-md mx-auto w-full pt-4">
         <header class="text-center mb-6">
             <span class="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-3 py-1 rounded-full border border-emerald-500/20">
@@ -17,37 +18,41 @@
             </span>
             <h1 class="text-2xl font-bold mt-3">Лаборатория привычек</h1>
             <p id="subtitle" class="text-slate-400 text-sm mt-1">
-                Выбери цель и начни с небольшого шага
+                Загружаем твою программу...
             </p>
         </header>
 
         <section id="loading-check" class="text-center py-12">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent mb-3"></div>
-            <p class="text-xs text-slate-400">Загружаем профиль...</p>
+            <p class="text-xs text-slate-400">Синхронизация с базой...</p>
         </section>
 
         <section id="habits-container" class="space-y-3 hidden">
             <p class="text-sm text-slate-300 mb-3">Выбери привычку:</p>
 
-            <div onclick="selectHabit('💧 Водный баланс (2л)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer">
+            <div onclick="selectHabit('💧 Водный баланс (2л)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer active:border-emerald-500">
                 <h3 class="font-semibold">💧 Водный баланс</h3>
                 <p class="text-xs text-slate-400">Пить воду регулярно в течение дня</p>
             </div>
-            <div onclick="selectHabit('📵 Цифровой детокс')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer">
+
+            <div onclick="selectHabit('📵 Цифровой детокс')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer active:border-emerald-500">
                 <h3 class="font-semibold">📵 Цифровой детокс</h3>
                 <p class="text-xs text-slate-400">Меньше экранного времени перед сном</p>
             </div>
-            <div onclick="selectHabit('🌙 Ранний сон (до 23:00)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer">
+
+            <div onclick="selectHabit('🌙 Ранний сон (до 23:00)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer active:border-emerald-500">
                 <h3 class="font-semibold">🌙 Ранний сон</h3>
                 <p class="text-xs text-slate-400">Стабильный режим отдыха</p>
             </div>
-            <div onclick="selectHabit('📖 Чтение (20 минут)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer">
+
+            <div onclick="selectHabit('📖 Чтение (20 минут)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer active:border-emerald-500">
                 <h3 class="font-semibold">📖 Чтение</h3>
                 <p class="text-xs text-slate-400">20 минут чтения в день</p>
             </div>
-            <div onclick="selectHabit('🎯 Фокус / Спорт')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer">
+
+            <div onclick="selectHabit('🎯 Фокус / Спорт')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer active:border-emerald-500">
                 <h3 class="font-semibold">🎯 Фокус / Спорт</h3>
-                <p class="text-xs text-slate-400">Регулярная тренировка или работа без отвлечений</p>
+                <p class="text-xs text-slate-400">Тренировка или работа без отвлечений</p>
             </div>
 
             <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl">
@@ -61,7 +66,7 @@
                     <option value="30">30 дней</option>
                 </select>
                 <p class="text-xs text-slate-400 mt-2">
-                    Сначала выбери привычку выше.
+                    Выбери привычку, затем установи длительность программы.
                 </p>
             </div>
         </section>
@@ -69,30 +74,39 @@
         <section id="success-screen" class="hidden bg-slate-800 border border-emerald-500/40 p-5 rounded-2xl space-y-4">
             <div class="text-center">
                 <div class="text-3xl mb-1">🚀</div>
-                <h2 class="text-lg font-bold text-emerald-400">Программа выбрана</h2>
+                <h2 class="text-lg font-bold text-emerald-400">Твоя программа</h2>
                 <p id="selected-habit-title" class="text-sm mt-2"></p>
             </div>
 
-            <p id="program-info" class="text-sm text-slate-300"></p>
+            <div class="bg-slate-900/70 rounded-xl p-4 space-y-3">
+                <p id="program-info" class="text-sm text-slate-300"></p>
+
+                <div class="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                    <div id="progress-bar" class="bg-emerald-500 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+                </div>
+
+                <p id="progress-label" class="text-xs text-slate-400">Выполнение по отметкам: 0%</p>
+            </div>
+
             <p id="habit-specific-instructions" class="text-sm text-slate-300 bg-slate-900/60 p-3 rounded-xl"></p>
 
-            <button onclick="sendAction({action:'checkin'})"
-                class="w-full bg-emerald-500 text-slate-950 font-bold py-3 rounded-xl">
+            <button id="checkin-button" onclick="sendAction({action:'checkin'})"
+                class="w-full bg-emerald-500 text-slate-950 font-bold py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed">
                 ✅ Отметить выполнение сегодня
             </button>
 
-            <button onclick="sendAction({action:'mentor',message:'Дай практический совет по моей привычке'})"
-                class="w-full bg-slate-700 font-semibold py-3 rounded-xl">
+            <button id="mentor-button" onclick="sendAction({action:'mentor',message:'Дай практический совет по моей привычке'})"
+                class="w-full bg-slate-700 font-semibold py-3 rounded-xl disabled:opacity-50">
                 🧠 Совет наставника
             </button>
 
-            <button onclick="resetHabit()"
-                class="w-full text-rose-400 py-2 text-sm">
+            <button id="reset-button" onclick="resetHabit()"
+                class="w-full text-rose-400 py-2 text-sm disabled:opacity-50">
                 Сбросить программу и выбрать другую
             </button>
         </section>
 
-        <p id="status" class="text-sm text-center text-slate-300 mt-4" role="status"></p>
+        <p id="status" class="text-sm text-center text-slate-300 mt-4" role="status" aria-live="polite"></p>
     </main>
 
     <footer class="text-center text-xs text-slate-500 pt-8">
@@ -102,8 +116,12 @@
 <script>
     const tg = window.Telegram?.WebApp;
 
+    // Временный адрес Cloudflare Tunnel.
+    // Если туннель перезапустится и адрес изменится, обнови его здесь.
+    const API_URL = 'https://protocols-teacher-today-exterior.trycloudflare.com';
+
     const instructions = {
-        '💧 Водный баланс (2л)': 'Распределяй питьё равномерно в течение дня. Ориентируйся на свои потребности и медицинские рекомендации, а не заставляй себя пить через силу.',
+        '💧 Водный баланс (2л)': 'Распределяй питьё равномерно в течение дня. Ориентируйся на свои потребности и медицинские рекомендации, не заставляй себя пить через силу.',
         '📵 Цифровой детокс': 'Попробуй убрать телефон за час до сна и заменить ленту спокойным занятием.',
         '🌙 Ранний сон (до 23:00)': 'Подготовься ко сну заранее: приглуши свет и отложи дела, которые можно закончить завтра.',
         '📖 Чтение (20 минут)': 'Выдели 20 минут на чтение без уведомлений и отвлечений.',
@@ -121,111 +139,232 @@
         document.getElementById(id).classList.add('hidden');
     }
 
-    function setStatus(text) {
-        document.getElementById('status').textContent = text;
+    function setStatus(message) {
+        document.getElementById('status').textContent = message || '';
+    }
+
+    function setBusy(value) {
+        busy = value;
+
+        ['checkin-button', 'mentor-button', 'reset-button'].forEach(id => {
+            const button = document.getElementById(id);
+            if (button) button.disabled = value;
+        });
+
+        document.querySelectorAll('#habits-container [onclick]').forEach(element => {
+            element.style.pointerEvents = value ? 'none' : '';
+            element.style.opacity = value ? '0.6' : '';
+        });
     }
 
     function showHabitChoices() {
+        selectedHabit = null;
         hide('loading-check');
         hide('success-screen');
         show('habits-container');
+
         document.getElementById('subtitle').textContent = 'Выбери привычку и длительность';
     }
 
-    function showDashboard(habit, duration) {
+    function showDashboard(habit, duration, program = null) {
+        selectedHabit = habit;
+
         hide('loading-check');
         hide('habits-container');
         show('success-screen');
 
         document.getElementById('subtitle').textContent = 'Твоя программа';
         document.getElementById('selected-habit-title').textContent = habit;
-        document.getElementById('program-info').textContent =
-            'Выбрана программа на ' + duration + ' дней. Точный прогресс появится после синхронизации с ботом.';
         document.getElementById('habit-specific-instructions').textContent =
             instructions[habit] || 'Выбери небольшой выполнимый шаг на сегодня.';
+
+        const info = document.getElementById('program-info');
+        const bar = document.getElementById('progress-bar');
+        const label = document.getElementById('progress-label');
+        const checkinButton = document.getElementById('checkin-button');
+
+        if (!program) {
+            info.textContent = `Программа на ${duration} дней. Получаем данные...`;
+            bar.style.width = '0%';
+            label.textContent = 'Загрузка прогресса...';
+            checkinButton.disabled = true;
+            return;
+        }
+
+        const day = Number(program.day_number) || 1;
+        const total = Number(program.duration_days) || duration;
+        const completed = Number(program.completed) || 0;
+        const percentage = Number(program.percentage) || 0;
+        const checkedToday = Boolean(program.checked_today);
+
+        info.textContent =
+            `День ${Math.min(day, total)} из ${total}. Отмечено дней: ${completed} из ${total}.`;
+
+        bar.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
+        label.textContent = `Выполнение по отметкам: ${percentage}%`;
+
+        if (checkedToday) {
+            checkinButton.textContent = '✅ Сегодня уже отмечено';
+            checkinButton.disabled = true;
+        } else if (day > total) {
+            checkinButton.textContent = 'Программа завершена';
+            checkinButton.disabled = true;
+        } else {
+            checkinButton.textContent = '✅ Отметить выполнение сегодня';
+            checkinButton.disabled = false;
+        }
     }
 
-    async function sendAction(payload) {
-    if (!tg || !tg.initData) {
-        setStatus('Открой Mini App через Telegram, чтобы авторизоваться.');
-        return;
-    }
+    async function apiRequest(path, data) {
+        if (!tg || !tg.initData) {
+            throw new Error('Открой Mini App через кнопку Telegram-бота.');
+        }
 
-    const API_URL = 'https://protocols-teacher-today-exterior.trycloudflare.com';
-
-    try {
-        setStatus('Обрабатываю запрос...');
-
-        const response = await fetch(`${API_URL}/api/action`, {
+        const response = await fetch(`${API_URL}${path}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 initData: tg.initData,
-                ...payload
+                ...data
             })
         });
 
-        const result = await response.json();
+        let result;
+
+        try {
+            result = await response.json();
+        } catch {
+            throw new Error(`Сервер вернул неожиданный ответ (HTTP ${response.status}).`);
+        }
 
         if (!response.ok) {
-            throw new Error(result.detail || 'Ошибка сервера');
+            throw new Error(result.detail || `Ошибка сервера: ${response.status}`);
         }
 
-        setStatus(result.message || 'Данные успешно обработаны.');
-
-        if (result.program) {
-            console.log('Прогресс из базы:', result.program);
-        }
-    } catch (error) {
-        console.error('Ошибка API:', error);
-        setStatus('Не удалось выполнить действие: ' + error.message);
+        return result;
     }
-}
 
-    function selectHabit(habit) {
-        selectedHabit = habit;
+    async function sendAction(payload) {
+        if (busy) return null;
+
+        setBusy(true);
+        setStatus('Отправляем запрос серверу...');
+
+        try {
+            const result = await apiRequest('/api/action', payload);
+
+            if (result.program) {
+                showDashboard(result.program.habit_name, result.program.duration_days, result.program);
+            } else if (payload.action === 'reset') {
+                showHabitChoices();
+            }
+
+            setStatus(result.message || 'Данные обновлены.');
+
+            return result;
+        } catch (error) {
+            console.error('Ошибка API:', error);
+            setStatus(`Не удалось выполнить действие: ${error.message}`);
+            return null;
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function selectHabit(habit) {
+        if (busy) return;
 
         const duration = Number(document.getElementById('duration').value || 7);
 
         showDashboard(habit, duration);
-        sendAction({
-            action: 'select_habit',
-            habit_name: habit,
-            duration_days: duration
-        });
+        setBusy(true);
+        setStatus('Сохраняем программу в базе...');
+
+        try {
+            const result = await apiRequest('/api/action', {
+                action: 'select_habit',
+                habit_name: habit,
+                duration_days: duration
+            });
+
+            if (result.program) {
+                showDashboard(result.program.habit_name, result.program.duration_days, result.program);
+            }
+
+            setStatus(result.message || 'Программа сохранена.');
+        } catch (error) {
+            console.error('Ошибка выбора привычки:', error);
+            showHabitChoices();
+            setStatus(`Не удалось сохранить привычку: ${error.message}`);
+        } finally {
+            setBusy(false);
+        }
     }
 
-    function resetHabit() {
-        if (!confirm('Завершить текущую программу и выбрать другую? История отметок будет сохранена.')) {
-            return;
-        }
+    async function resetHabit() {
+        if (busy) return;
 
-        // Сначала показываем выбор. Бот должен получить действие reset
-        // и завершить активную программу в SQLite.
-        if (tg && typeof tg.sendData === 'function') {
-            sendAction({action: 'reset'});
-        }
+        const confirmed = confirm(
+            'Завершить текущую программу и выбрать другую? История отметок будет сохранена.'
+        );
 
-        selectedHabit = null;
-        setStatus('Запрос на сброс отправлен. Если программа осталась активной, проверь ответ бота.');
-        showHabitChoices();
+        if (!confirmed) return;
+
+        const result = await sendAction({ action: 'reset' });
+
+        if (result && result.ok) {
+            showHabitChoices();
+            setStatus(result.message || 'Программа завершена. Выбери новую привычку.');
+        }
     }
 
-    function loadProfile() {
+    async function loadProfile() {
         if (tg && typeof tg.expand === 'function') {
             tg.expand();
         }
 
-        // Не ждём CloudStorage: его callback может не прийти.
-        // Источник истины — база бота, а не сохранённая в браузере привычка.
-        showHabitChoices();
+        if (tg && typeof tg.ready === 'function') {
+            tg.ready();
+        }
+
+        hide('habits-container');
+        hide('success-screen');
+        show('loading-check');
+        setStatus('');
+
+        if (!tg || !tg.initData) {
+            showHabitChoices();
+            setStatus('Открой Mini App через Telegram, чтобы загрузить профиль из базы.');
+            return;
+        }
+
+        try {
+            const result = await apiRequest('/api/state', {});
+
+            hide('loading-check');
+
+            if (result.program) {
+                showDashboard(
+                    result.program.habit_name,
+                    result.program.duration_days,
+                    result.program
+                );
+                setStatus('Прогресс загружен из базы.');
+            } else {
+                showHabitChoices();
+                setStatus('Активной программы нет. Выбери привычку.');
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки профиля:', error);
+            showHabitChoices();
+            setStatus(`Не удалось загрузить профиль: ${error.message}`);
+        }
     }
 
-    // Показываем выбор сразу и не зависаем на «Загружаем профиль…».
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', loadProfile, {once:true});
+        document.addEventListener('DOMContentLoaded', loadProfile, { once: true });
     } else {
         loadProfile();
     }
