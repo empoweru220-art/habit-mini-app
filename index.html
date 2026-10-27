@@ -1,185 +1,209 @@
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Лаборатория привычек</title>
-    <!-- Подключаем Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Официальный скрипт Telegram Web App -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between p-4">
 
-    <!-- Шапка приложения -->
-    <div class="max-w-md mx-auto w-full pt-4">
-        <div class="text-center mb-6">
+    <main class="max-w-md mx-auto w-full pt-4">
+        <header class="text-center mb-6">
             <span class="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-3 py-1 rounded-full border border-emerald-500/20">
-                ⚡️ 7-дневная матрица
+                ⚡️ Лаборатория привычек
             </span>
-            <h1 class="text-2xl font-bold mt-2">Лаборатория привычек</h1>
-            <p id="subtitle" class="text-slate-400 text-sm mt-1">Выбери цель и докажи дисциплину себе</p>
-        </div>
+            <h1 class="text-2xl font-bold mt-3">Лаборатория привычек</h1>
+            <p id="subtitle" class="text-slate-400 text-sm mt-1">
+                Выбери цель и начни с небольшого шага
+            </p>
+        </header>
 
-        <!-- Список привычек -->
-        <div id="habits-container" class="space-y-3 hidden">
-            <div onclick="selectHabit('💧 Водный баланс (2л)')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
-                <div>
-                    <h3 class="font-semibold">💧 Водный баланс</h3>
-                    <p class="text-xs text-slate-400">Пить чистую воду вовремя</p>
-                </div>
-                <span class="text-emerald-400 font-bold">→</span>
-            </div>
-
-            <div onclick="selectHabit('📵 Цифровой детокс')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
-                <div>
-                    <h3 class="font-semibold">📵 Цифровой детокс</h3>
-                    <p class="text-xs text-slate-400">Без соцсетей за час до сна</p>
-                </div>
-                <span class="text-emerald-400 font-bold">→</span>
-            </div>
-
-            <div onclick="selectHabit('🌙 Ранний сон (до 23:00)')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
-                <div>
-                    <h3 class="font-semibold">🌙 Ранний сон</h3>
-                    <p class="text-xs text-slate-400">Стабильный режим отдыха</p>
-                </div>
-                <span class="text-emerald-400 font-bold">→</span>
-            </div>
-
-            <div onclick="selectHabit('📖 Чтение (20 минут)')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
-                <div>
-                    <h3 class="font-semibold">📖 Чтение литературы</h3>
-                    <p class="text-xs text-slate-400">Развитие мышления ежедневно</p>
-                </div>
-                <span class="text-emerald-400 font-bold">→</span>
-            </div>
-
-            <div onclick="selectHabit('🎯 Фокус / Спорт')" class="habit-card bg-slate-800/80 border border-slate-700/60 p-4 rounded-xl cursor-pointer hover:border-emerald-500 transition flex items-center justify-between">
-                <div>
-                    <h3 class="font-semibold">🎯 Фокус / Тренировка</h3>
-                    <p class="text-xs text-slate-400">Энергия и физическая форма</p>
-                </div>
-                <span class="text-emerald-400 font-bold">→</span>
-            </div>
-        </div>
-
-        <!-- Экран загрузки проверки памяти -->
-        <div id="loading-check" class="text-center py-12">
+        <section id="loading-check" class="text-center py-12">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent mb-3"></div>
             <p class="text-xs text-slate-400">Загружаем профиль...</p>
-        </div>
+        </section>
 
-        <!-- Личный кабинет / Активный марафон -->
-        <div id="success-screen" class="hidden bg-slate-800/90 border border-emerald-500/40 p-5 rounded-2xl shadow-xl space-y-4">
+        <section id="habits-container" class="space-y-3 hidden">
+            <p class="text-sm text-slate-300 mb-3">Выбери привычку:</p>
+
+            <div onclick="selectHabit('💧 Водный баланс (2л)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer">
+                <h3 class="font-semibold">💧 Водный баланс</h3>
+                <p class="text-xs text-slate-400">Пить воду регулярно в течение дня</p>
+            </div>
+            <div onclick="selectHabit('📵 Цифровой детокс')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer">
+                <h3 class="font-semibold">📵 Цифровой детокс</h3>
+                <p class="text-xs text-slate-400">Меньше экранного времени перед сном</p>
+            </div>
+            <div onclick="selectHabit('🌙 Ранний сон (до 23:00)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer">
+                <h3 class="font-semibold">🌙 Ранний сон</h3>
+                <p class="text-xs text-slate-400">Стабильный режим отдыха</p>
+            </div>
+            <div onclick="selectHabit('📖 Чтение (20 минут)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer">
+                <h3 class="font-semibold">📖 Чтение</h3>
+                <p class="text-xs text-slate-400">20 минут чтения в день</p>
+            </div>
+            <div onclick="selectHabit('🎯 Фокус / Спорт')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer">
+                <h3 class="font-semibold">🎯 Фокус / Спорт</h3>
+                <p class="text-xs text-slate-400">Регулярная тренировка или работа без отвлечений</p>
+            </div>
+
+            <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl">
+                <label for="duration" class="block text-sm font-semibold mb-2">
+                    Длительность программы
+                </label>
+                <select id="duration" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm">
+                    <option value="7">7 дней</option>
+                    <option value="14">14 дней</option>
+                    <option value="21">21 день</option>
+                    <option value="30">30 дней</option>
+                </select>
+                <p class="text-xs text-slate-400 mt-2">
+                    Сначала выбери привычку выше.
+                </p>
+            </div>
+        </section>
+
+        <section id="success-screen" class="hidden bg-slate-800 border border-emerald-500/40 p-5 rounded-2xl space-y-4">
             <div class="text-center">
                 <div class="text-3xl mb-1">🚀</div>
-                <h2 class="text-lg font-bold text-emerald-400">Матрица активна</h2>
-                <p id="selected-habit-title" class="text-sm font-semibold text-slate-200 mt-1"></p>
-            </div>
-            
-            <!-- Прогресс -->
-            <div class="bg-slate-900/60 p-3.5 rounded-xl border border-slate-700">
-                <div class="flex justify-between text-xs text-slate-400 mb-1">
-                    <span>День 1 из 7</span>
-                    <span class="text-emerald-400 font-bold">14% выполнено</span>
-                </div>
-                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
-                    <div class="bg-emerald-500 h-full w-[14%]"></div>
-                </div>
+                <h2 class="text-lg font-bold text-emerald-400">Программа выбрана</h2>
+                <p id="selected-habit-title" class="text-sm mt-2"></p>
             </div>
 
-            <!-- Уникальное описание и план для каждой привычки -->
-            <div class="bg-emerald-500/10 border border-emerald-500/20 p-3.5 rounded-xl text-xs text-slate-300 space-y-2">
-                <p class="font-semibold text-emerald-400">📌 План на 7 дней:</p>
-                <p id="habit-specific-instructions">Загрузка инструкций...</p>
-            </div>
+            <p id="program-info" class="text-sm text-slate-300"></p>
+            <p id="habit-specific-instructions" class="text-sm text-slate-300 bg-slate-900/60 p-3 rounded-xl"></p>
 
-            <!-- Навигация -->
-            <div class="space-y-2 pt-2">
-                <button onclick="closeApp()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-3 rounded-xl transition shadow-lg shadow-emerald-500/20 text-sm">
-                    Вернуться в чат с ботом
-                </button>
-                <button onclick="resetHabit()" class="w-full bg-transparent hover:bg-slate-700/50 text-slate-500 hover:text-rose-400 font-medium py-2 rounded-xl transition text-xs">
-                    Сбросить привычку и выбрать другую
-                </button>
-            </div>
-        </div>
-    </div>
+            <button onclick="sendAction({action:'checkin'})"
+                class="w-full bg-emerald-500 text-slate-950 font-bold py-3 rounded-xl">
+                ✅ Отметить выполнение сегодня
+            </button>
 
-    <!-- Футер -->
-    <div class="text-center text-xs text-slate-500 pb-2">
-        Habit Lab v1.0 • Telegram Mini App
-    </div>
+            <button onclick="sendAction({action:'mentor',message:'Дай практический совет по моей привычке'})"
+                class="w-full bg-slate-700 font-semibold py-3 rounded-xl">
+                🧠 Совет наставника
+            </button>
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+            <button onclick="resetHabit()"
+                class="w-full text-rose-400 py-2 text-sm">
+                Сбросить программу и выбрать другую
+            </button>
+        </section>
 
-        // База уникальных инструкций для каждой привычки
-        const habitInstructions = {
-            '💧 Водный баланс (2л)': 'Выпивайте по 250 мл воды каждые 2 часа. Сегодня ваша цель — распределить объём равномерно и зафиксировать вечерний результат.',
-            '📵 Цифровой детокс': 'Уберите телефон из спальни ровно за 1 час до сна. Замените ленту соцсетей на бумажную книгу или спокойную растяжку.',
-            '🌙 Ранний сон (до 23:00)': 'Подготовьте спальню заранее: проветрите комнату и выключите яркий свет в 22:30. Ложимся вовремя.',
-            '📖 Чтение (20 минут)': 'Выделите 20 минут в тишине без отвлечений на мессенджеры. Читайте осознанно, фиксируя главные мысли.',
-            '🎯 Фокус / Спорт': 'Проведите короткую разминку или уделите 20 минут фокус-задаче без переключений. Главное — регулярность импульса.'
-        };
+        <p id="status" class="text-sm text-center text-slate-300 mt-4" role="status"></p>
+    </main>
 
-        window.addEventListener('DOMContentLoaded', () => {
-            if (tg.CloudStorage) {
-                tg.CloudStorage.getItem('user_habit', (err, value) => {
-                    document.getElementById('loading-check').classList.add('hidden');
-                    if (!err && value) {
-                        showDashboard(value);
-                    } else {
-                        document.getElementById('habits-container').classList.remove('hidden');
-                    }
-                });
-            } else {
-                document.getElementById('loading-check').classList.add('hidden');
-                document.getElementById('habits-container').classList.remove('hidden');
-            }
-        });
+    <footer class="text-center text-xs text-slate-500 pt-8">
+        Habit Lab • Telegram Mini App
+    </footer>
 
-        function selectHabit(habitName) {
-            if (tg.CloudStorage) {
-                // Сохраняем надежно через CloudStorage
-                tg.CloudStorage.setItem('user_habit', habitName, (err, saved) => {});
-            }
-            if (tg && tg.sendData) {
-                try { tg.sendData(habitName); } catch (e) {}
-            }
-            showDashboard(habitName);
+<script>
+    const tg = window.Telegram?.WebApp;
+
+    const instructions = {
+        '💧 Водный баланс (2л)': 'Распределяй питьё равномерно в течение дня. Ориентируйся на свои потребности и медицинские рекомендации, а не заставляй себя пить через силу.',
+        '📵 Цифровой детокс': 'Попробуй убрать телефон за час до сна и заменить ленту спокойным занятием.',
+        '🌙 Ранний сон (до 23:00)': 'Подготовься ко сну заранее: приглуши свет и отложи дела, которые можно закончить завтра.',
+        '📖 Чтение (20 минут)': 'Выдели 20 минут на чтение без уведомлений и отвлечений.',
+        '🎯 Фокус / Спорт': 'Запланируй короткую тренировку или один отрезок сосредоточенной работы.'
+    };
+
+    let selectedHabit = null;
+    let busy = false;
+
+    function show(id) {
+        document.getElementById(id).classList.remove('hidden');
+    }
+
+    function hide(id) {
+        document.getElementById(id).classList.add('hidden');
+    }
+
+    function setStatus(text) {
+        document.getElementById('status').textContent = text;
+    }
+
+    function showHabitChoices() {
+        hide('loading-check');
+        hide('success-screen');
+        show('habits-container');
+        document.getElementById('subtitle').textContent = 'Выбери привычку и длительность';
+    }
+
+    function showDashboard(habit, duration) {
+        hide('loading-check');
+        hide('habits-container');
+        show('success-screen');
+
+        document.getElementById('subtitle').textContent = 'Твоя программа';
+        document.getElementById('selected-habit-title').textContent = habit;
+        document.getElementById('program-info').textContent =
+            'Выбрана программа на ' + duration + ' дней. Точный прогресс появится после синхронизации с ботом.';
+        document.getElementById('habit-specific-instructions').textContent =
+            instructions[habit] || 'Выбери небольшой выполнимый шаг на сегодня.';
+    }
+
+    function sendAction(payload) {
+        if (!tg || typeof tg.sendData !== 'function') {
+            setStatus('Открой приложение через кнопку Telegram-бота, чтобы передавать данные.');
+            return;
         }
 
-        function showDashboard(habitName) {
-            document.getElementById('loading-check').classList.add('hidden');
-            document.getElementById('habits-container').classList.add('hidden');
-            document.getElementById('subtitle').innerText = "Ваш личный кабинет марафона";
-            document.getElementById('selected-habit-title').innerText = "Цель: " + habitName;
-            
-            // Подставляем уникальную инструкцию для выбранной привычки
-            const instruction = habitInstructions[habitName] || 'Выполняйте выбранное действие ежедневно под контролем ИИ.';
-            document.getElementById('habit-specific-instructions').innerText = instruction;
-
-            document.getElementById('success-screen').classList.remove('hidden');
-        }
-
-        function closeApp() {
-            if (tg && tg.close) {
-                tg.close();
-            } else {
-                window.close();
-            }
-        }
-
-       function resetHabit() {
-    if (confirm("Вы уверены, что хотите сбросить текущий прогресс и выбрать новую цель?")) {
-        if (tg && tg.sendData) {
-            tg.sendData("__RESET_HABIT__");
+        try {
+            tg.sendData(JSON.stringify(payload));
+        } catch (error) {
+            console.error('Ошибка отправки:', error);
+            setStatus('Не удалось отправить действие. Попробуй открыть Mini App заново.');
         }
     }
-}
-    </script>
+
+    function selectHabit(habit) {
+        selectedHabit = habit;
+
+        const duration = Number(document.getElementById('duration').value || 7);
+
+        showDashboard(habit, duration);
+        sendAction({
+            action: 'select_habit',
+            habit_name: habit,
+            duration_days: duration
+        });
+    }
+
+    function resetHabit() {
+        if (!confirm('Завершить текущую программу и выбрать другую? История отметок будет сохранена.')) {
+            return;
+        }
+
+        // Сначала показываем выбор. Бот должен получить действие reset
+        // и завершить активную программу в SQLite.
+        if (tg && typeof tg.sendData === 'function') {
+            sendAction({action: 'reset'});
+        }
+
+        selectedHabit = null;
+        setStatus('Запрос на сброс отправлен. Если программа осталась активной, проверь ответ бота.');
+        showHabitChoices();
+    }
+
+    function loadProfile() {
+        if (tg && typeof tg.expand === 'function') {
+            tg.expand();
+        }
+
+        // Не ждём CloudStorage: его callback может не прийти.
+        // Источник истины — база бота, а не сохранённая в браузере привычка.
+        showHabitChoices();
+    }
+
+    // Показываем выбор сразу и не зависаем на «Загружаем профиль…».
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadProfile, {once:true});
+    } else {
+        loadProfile();
+    }
+</script>
 </body>
 </html>
