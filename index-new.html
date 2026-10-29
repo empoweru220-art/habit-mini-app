@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Лаборатория привычек</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+    button:disabled { opacity: .55; cursor: wait; }
+    .habit-card { cursor: pointer; transition: border-color .15s; }
+    .habit-card:active { transform: scale(.99); }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4">
+  <main class="max-w-md mx-auto pt-4">
+    <header class="text-center mb-6">
+      <span class="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-3 py-1 rounded-full border border-emerald-500/20">
+        ⚡️ Лаборатория привычек
+      </span>
+      <h1 class="text-2xl font-bold mt-3">Лаборатория привычек</h1>
+      <p id="subtitle" class="text-slate-400 text-sm mt-2">
+        Небольшие действия. Реальный прогресс.
+      </p>
+    </header>
+
+    <section id="loading" class="text-center py-10">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent"></div>
+      <p class="text-sm text-slate-400 mt-3">Загружаем профиль…</p>
+    </section>
+
+    <section id="error-screen" class="hidden bg-slate-800 border border-rose-500/30 rounded-2xl p-5 space-y-3">
+      <h2 class="font-bold text-rose-300">Не удалось загрузить профиль</h2>
+      <p id="error-text" class="text-sm text-slate-300">
+        Проверь подключение и повтори попытку.
+      </p>
+      <button id="retry-button" onclick="loadProfile()"
+        class="w-full bg-emerald-500 text-slate-950 font-bold py-3 rounded-xl">
+        Повторить загрузку
+      </button>
+    </section>
+
+    <section id="habits-screen" class="hidden space-y-3">
+      <h2 class="font-bold text-lg mb-3">Выбери привычку</h2>
+
+      <label class="block text-sm text-slate-400 mb-1" for="duration">Длительность программы</label>
+      <select id="duration" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 mb-2">
+        <option value="7">7 дней</option>
+        <option value="14">14 дней</option>
+        <option value="21">21 день</option>
+        <option value="30">30 дней</option>
+      </select>
+
+      <button onclick="selectHabit('💧 Водный баланс (2л)')"
+        class="habit-card w-full text-left bg-slate-800 border border-slate-700 p-4 rounded-xl">
+        <strong>💧 Водный баланс</strong>
+        <p class="text-sm text-slate-400 mt-1">Равномерно пить воду в течение дня</p>
+      </button>
+
+      <button onclick="selectHabit('📵 Цифровой детокс')"
+        class="habit-card w-full text-left bg-slate-800 border border-slate-700 p-4 rounded-xl">
+        <strong>📵 Цифровой детокс</strong>
+        <p class="text-sm text-slate-400 mt-1">Меньше отвлекаться на телефон</p>
+      </button>
+
+      <button onclick="selectHabit('🌙 Ранний сон (до 23:00)')"
+        class="habit-card w-full text-left bg-slate-800 border border-slate-700 p-4 rounded-xl">
+        <strong>🌙 Ранний сон</strong>
+        <p class="text-sm text-slate-400 mt-1">Стабильный режим отдыха</p>
+      </button>
+
+      <button onclick="selectHabit('📖 Чтение (20 минут)')"
+        class="habit-card w-full text-left bg-slate-800 border border-slate-700 p-4 rounded-xl">
+        <strong>📖 Чтение</strong>
+        <p class="text-sm text-slate-400 mt-1">20 минут чтения в день</p>
+      </button>
+
+      <button onclick="selectHabit('🎯 Фокус / Спорт')"
+        class="habit-card w-full text-left bg-slate-800 border border-slate-700 p-4 rounded-xl">
+        <strong>🎯 Фокус / Спорт</strong>
+        <p class="text-sm text-slate-400 mt-1">Короткая тренировка или работа без отвлечений</p>
+      </button>
+    </section>
+
+    <section id="dashboard" class="hidden bg-slate-800 border border-emerald-500/30 rounded-2xl p-5 space-y-4">
+      <div class="text-center">
+        <div class="text-3xl">🚀</div>
+        <h2 class="text-lg font-bold text-emerald-400 mt-1">Матрица активна</h2>
+        <p id="habit-title" class="text-sm mt-2"></p>
+      </div>
+
+      <div class="bg-slate-900 rounded-xl border border-slate-700 p-3">
+        <div class="flex justify-between text-xs text-slate-400 mb-2">
+          <span id="day-label">День 1 из 7</span>
+          <span id="percent-label" class="text-emerald-400 font-bold">0%</span>
+        </div>
+        <div class="w-full h-2 rounded-full bg-slate-700 overflow-hidden">
+          <div id="progress-bar" class="h-full bg-emerald-500" style="width:0%"></div>
+        </div>
+        <p id="checkin-count" class="text-xs text-slate-400 mt-2"></p>
+      </div>
+
+      <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
+        <p class="text-sm font-semibold text-emerald-400 mb-2">📌 Задание на сегодня</p>
+        <p id="daily-instruction" class="text-sm text-slate-300"></p>
+      </div>
+
+      <button id="checkin-button" onclick="checkIn()"
+        class="w-full bg-emerald-500 text-slate-950 font-bold py-3 rounded-xl">
+        ✅ Отметить сегодня
+      </button>
+
+      <button onclick="askMentor()"
+        class="w-full bg-slate-700 hover:bg-slate-600 font-semibold py-3 rounded-xl">
+        🧠 Спросить наставника
+      </button>
+
+      <div class="border-t border-slate-700 pt-4 space-y-3">
+        <h3 class="font-semibold">⏰ Напоминания</h3>
+        <label class="flex items-center justify-between gap-3 text-sm">
+          <span>Получать напоминания</span>
+          <input id="reminders-enabled" type="checkbox" checked class="w-5 h-5 accent-emerald-500">
+        </label>
+        <label class="block text-sm text-slate-400" for="reminders-count">Количество в день</label>
+        <select id="reminders-count" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3">
+          <option value="1">1 — в 20:00</option>
+          <option value="2">2 — в 09:00 и 20:00</option>
+          <option value="3">3 — 09:00, 14:30, 20:00</option>
+          <option value="4">4 — 09:00, 12:40, 16:20, 20:00</option>
+          <option value="5">5 — 09:00, 11:45, 14:30, 17:15, 20:00</option>
+        </select>
+        <p id="timezone-label" class="text-xs text-slate-500"></p>
+        <button onclick="saveReminderSettings()"
+          class="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-xl font-semibold">
+          Сохранить напоминания
+        </button>
+      </div>
+
+      <button onclick="closeApp()"
+        class="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-xl">
+        Вернуться в чат с ботом
+      </button>
+      <button id="reset-button" onclick="resetHabit()"
+        class="w-full text-rose-300 hover:bg-rose-500/10 py-2 rounded-xl text-sm">
+        Сбросить программу и выбрать другую
+      </button>
+    </section>
+
+    <section id="message-box" class="hidden mt-4 rounded-xl border border-slate-700 bg-slate-800 p-4">
+      <p id="message-text" class="text-sm whitespace-pre-line"></p>
+      <textarea id="mentor-input" class="hidden w-full mt-3 bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm"
+        rows="3" maxlength="2000" placeholder="Напиши вопрос наставнику…"></textarea>
+      <div id="mentor-actions" class="hidden mt-2 flex gap-2">
+        <button onclick="sendMentorQuestion()" class="flex-1 bg-emerald-500 text-slate-950 font-bold p-3 rounded-xl">
+          Отправить
+        </button>
+        <button onclick="hideMessage()" class="bg-slate-700 p-3 rounded-xl">Отмена</button>
+      </div>
+    </section>
+
+    <p class="text-center text-xs text-slate-600 mt-6">Habit Lab • Telegram Mini App</p>
+  </main>
+
+<script>
+"use strict";
+
+const tg = window.Telegram?.WebApp || null;
+const API_TIMEOUT_MS = 12000;
+let currentProgram = null;
+let currentReminders = {
+  enabled: true,
+  reminders_per_day: 1,
+  timezone: "Europe/Warsaw"
+};
+let busy = false;
+
+const instructions = {
+  "💧 Водный баланс (2л)": [
+    "Распредели питьё воды в течение дня. Не пытайся выпить весь объём за один раз.",
+    "Свяжи стакан воды с привычными моментами: после пробуждения и во время перерывов.",
+    "Подготовь воду заранее, чтобы не вспоминать о ней в последний момент.",
+    "Отслеживай, в какие часы чаще всего забываешь пить.",
+    "Сделай воду доступной на рабочем месте.",
+    "Оцени, какой режим питья тебе удобнее поддерживать.",
+    "Подведи итог недели и выбери реалистичный режим на следующую."
+  ],
+  "📵 Цифровой детокс": [
+    "Убери телефон подальше на 20 минут и займись одним делом.",
+    "Отключи ненужные уведомления на время работы.",
+    "Не открывай соцсети в первые 15 минут после пробуждения.",
+    "Перед сном оставь телефон вне досягаемости от кровати.",
+    "Выбери конкретные часы для проверки сообщений.",
+    "Замени одну привычную проверку телефона короткой прогулкой или чтением.",
+    "Посмотри, какие изменения помогли меньше отвлекаться."
+  ],
+  "🌙 Ранний сон (до 23:00)": [
+    "Начни вечернее замедление заранее: приглуши свет и заверши необязательные дела.",
+    "Подготовь одежду и вещи на завтра, чтобы не затягивать вечер.",
+    "Установи время, после которого не начинаешь новые дела.",
+    "Уменьши яркость экранов перед сном.",
+    "Старайся вставать примерно в одно время, если это подходит твоему режиму.",
+    "Отметь, что мешает лечь вовремя, и убери одно препятствие.",
+    "Оцени неделю и выбери один полезный вечерний ритуал."
+  ],
+  "📖 Чтение (20 минут)": [
+    "Выбери текст и читай 20 минут без переключения на телефон.",
+    "Начни с удобного места и заранее приготовленной книги.",
+    "После чтения запиши одну мысль, которую хочешь запомнить.",
+    "Если трудно начать, договорись с собой читать хотя бы пять минут.",
+    "Попробуй читать в одно и то же время дня.",
+    "Убери отвлекающие вкладки и уведомления.",
+    "Подведи итог и выбери книгу или текст на следующую неделю."
+  ],
+  "🎯 Фокус / Спорт": [
+    "Выбери одно конкретное дело или короткую тренировку на сегодня.",
+    "Подготовь всё необходимое заранее, чтобы упростить начало.",
+    "Поставь таймер на 20 минут и не переключайся между задачами.",
+    "Если нет сил, уменьши нагрузку до безопасного минимального шага.",
+    "Запланируй время для тренировки или фокус-сессии заранее.",
+    "Убери одно частое отвлечение на время занятия.",
+    "Оцени, какой формат проще всего повторять на следующей неделе."
+  ]
+};
+
+function el(id) { return document.getElementById(id); }
+function show(id) { el(id).classList.remove("hidden"); }
+function hide(id) { el(id).classList.add("hidden"); }
+
+function setLoading(text = "Загружаем профиль…") {
+  el("loading").querySelector("p").textContent = text;
+  show("loading");
+  hide("error-screen");
+  hide("habits-screen");
+  hide("dashboard");
+}
+
+function showError(message) {
+  hide("loading");
+  hide("habits-screen");
+  hide("dashboard");
+  el("error-text").textContent = message;
+  show("error-screen");
+}
+
+function getTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Warsaw";
+  } catch (_) {
+    return "Europe/Warsaw";
+  }
+}
+
+function requireTelegramAuth() {
+  if (!tg || !tg.initData) {
+    throw new Error("Открой Mini App кнопкой из чата с Telegram-ботом. В обычном браузере авторизация Telegram недоступна.");
+  }
+  return tg.initData;
+}
+
+async function api(path, payload = {}) {
+  const initData = requireTelegramAuth();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+      body: JSON.stringify({ initData, ...payload })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || `Ошибка сервера (${response.status})`);
+    }
+    return data;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Сервер не ответил за 12 секунд. Проверь соединение и повтори загрузку.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function showChoices() {
+  currentProgram = null;
+  hide("loading");
+  hide("error-screen");
+  hide("dashboard");
+  hide("message-box");
+  show("habits-screen");
+  el("subtitle").textContent = "Выбери цель и начни с небольшого шага.";
+}
+
+function showDashboard(program, reminders) {
+  currentProgram = program;
+  currentReminders = reminders || currentReminders;
+  hide("loading");
+  hide("error-screen");
+  hide("habits-screen");
+  show("dashboard");
+  hide("message-box");
+
+  const duration = Number(program.duration_days || 7);
+  const day = Number(program.day_number || 1);
+  const completed = Number(program.completed || 0);
+  const percentage = Number(program.percentage || 0);
+
+  el("habit-title").textContent = `Цель: ${program.habit_name}`;
+  el("day-label").textContent = `День ${Math.min(day, duration)} из ${duration}`;
+  el("percent-label").textContent = `${percentage}% выполнено`;
+  el("progress-bar").style.width = `${Math.max(0, Math.min(100, percentage))}%`;
+  el("checkin-count").textContent = `Отмечено дней: ${completed} из ${duration}`;
+
+  const list = instructions[program.habit_name] || [
+    "Выбери конкретное действие, выполни его и отметь результат."
+  ];
+  const tipIndex = Math.max(0, (day - 1) % list.length);
+  el("daily-instruction").textContent = list[tipIndex];
+
+  el("checkin-button").disabled = Boolean(program.checked_today);
+  el("checkin-button").textContent = program.checked_today
+    ? "✅ Сегодня уже отмечено"
+    : "✅ Отметить сегодня";
+
+  el("reminders-enabled").checked = Boolean(currentReminders.enabled);
+  el("reminders-count").value = String(currentReminders.reminders_per_day || 1);
+  el("timezone-label").textContent =
+    `Часовой пояс: ${currentReminders.timezone || getTimezone()}`;
+
+  el("subtitle").textContent = "Твой план и текущий прогресс.";
+}
+
+async function loadProfile() {
+  setLoading();
+  try {
+    const data = await api("/api/state");
+    if (data.program) showDashboard(data.program, data.reminders);
+    else {
+      currentReminders = data.reminders || currentReminders;
+      showChoices();
+    }
+  } catch (error) {
+    showError(error.message || "Не удалось загрузить профиль.");
+  }
+}
+
+async function selectHabit(habitName) {
+  if (busy) return;
+  busy = true;
+  setLoading("Сохраняем выбранную привычку…");
+
+  try {
+    const data = await api("/api/action", {
+      action: "start_habit",
+      habit_name: habitName,
+      duration_days: Number(el("duration").value)
+    });
+    if (!data.program) throw new Error("Сервер не вернул активную программу.");
+    showDashboard(data.program, data.reminders);
+  } catch (error) {
+    showError(error.message || "Не удалось начать программу.");
+  } finally {
+    busy = false;
+  }
+}
+
+async function checkIn() {
+  if (busy || !currentProgram) return;
+  busy = true;
+  el("checkin-button").disabled = true;
+
+  try {
+    const data = await api("/api/action", { action: "checkin" });
+    showMessage(data.message || "Запрос обработан.");
+    if (data.program) showDashboard(data.program, data.reminders);
+    else showChoices();
+  } catch (error) {
+    showMessage(error.message || "Не удалось сохранить отметку.");
+    el("checkin-button").disabled = false;
+  } finally {
+    busy = false;
+  }
+}
+
+async function resetHabit() {
+  if (busy || !currentProgram) return;
+  if (!confirm("Завершить текущую программу? История и отметки сохранятся.")) return;
+
+  busy = true;
+  setLoading("Завершаем программу…");
+  try {
+    const data = await api("/api/action", { action: "reset" });
+    if (!data.ok) throw new Error(data.message || "Сброс не подтверждён сервером.");
+    currentProgram = null;
+    showChoices();
+    showMessage(data.message || "Программа завершена. Выбери новую привычку.");
+  } catch (error) {
+    showError(error.message || "Не удалось завершить программу.");
+  } finally {
+    busy = false;
+  }
+}
+
+async function saveReminderSettings() {
+  if (busy) return;
+  busy = true;
+
+  try {
+    const data = await api("/api/action", {
+      action: "reminder_settings",
+      reminders_enabled: el("reminders-enabled").checked,
+      reminders_per_day: Number(el("reminders-count").value),
+      timezone: getTimezone()
+    });
+    currentReminders = data.reminders || currentReminders;
+    if (data.program) showDashboard(data.program, currentReminders);
+    showMessage(data.message || "Настройки сохранены.");
+  } catch (error) {
+    showMessage(error.message || "Не удалось сохранить настройки.");
+  } finally {
+    busy = false;
+  }
+}
+
+function askMentor() {
+  el("message-text").textContent = "Напиши вопрос наставнику:";
+  el("mentor-input").value = "";
+  show("message-box");
+  show("mentor-input");
+  show("mentor-actions");
+  el("mentor-input").focus();
+}
+
+async function sendMentorQuestion() {
+  const question = el("mentor-input").value.trim();
+  if (!question) {
+    el("message-text").textContent = "Сначала напиши вопрос.";
+    return;
+  }
+  if (busy) return;
+  busy = true;
+  el("message-text").textContent = "Наставник готовит ответ…";
+
+  try {
+    const data = await api("/api/action", {
+      action: "mentor",
+      message: question
+    });
+    el("message-text").textContent =
+      `${data.used_ai ? "🧠 ИИ-наставник" : "💡 Автоматическая подсказка"}\n\n${data.message}`;
+    hide("mentor-input");
+    hide("mentor-actions");
+  } catch (error) {
+    el("message-text").textContent = error.message || "Не удалось получить ответ.";
+  } finally {
+    busy = false;
+  }
+}
+
+function showMessage(message) {
+  el("message-text").textContent = message;
+  hide("mentor-input");
+  hide("mentor-actions");
+  show("message-box");
+}
+
+function hideMessage() {
+  hide("message-box");
+}
+
+function closeApp() {
+  if (tg && typeof tg.close === "function") tg.close();
+  else showMessage("Закрой окно и вернись в чат с ботом.");
+}
+
+// Готовность Telegram сообщаем сразу, не дожидаясь сетевых запросов.
+if (tg) {
+  try {
+    tg.ready();
+    tg.expand();
+  } catch (error) {
+    console.warn("Telegram WebApp init:", error);
+  }
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  // Тайм-аут визуального ожидания — даже если запрос подвиснет,
+  // пользователь увидит ошибку и кнопку повтора.
+  const safetyTimer = setTimeout(() => {
+    if (!el("loading").classList.contains("hidden")) {
+      showError("Загрузка занимает слишком много времени. Нажми «Повторить загрузку».");
+    }
+  }, 13000);
+
+  loadProfile().finally(() => clearTimeout(safetyTimer));
+});
+</script>
+</body>
+</html>
