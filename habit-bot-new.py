@@ -175,14 +175,28 @@ def init_db():
     logger.info("База данных готова: %s", DB_PATH)
 
 
-def get_active_program(user_id):
+def get_active_program(user_id, program_id=None):
+    """Возвращает выбранную программу; без ID — самую новую активную."""
     with connect_db() as conn:
+        if program_id is not None:
+            return conn.execute("""
+                SELECT * FROM programs
+                WHERE user_id = ? AND id = ? AND status = 'active'
+            """, (user_id, int(program_id))).fetchone()
         return conn.execute("""
             SELECT * FROM programs
             WHERE user_id = ? AND status = 'active'
             ORDER BY id DESC LIMIT 1
         """, (user_id,)).fetchone()
 
+
+def get_active_programs(user_id):
+    with connect_db() as conn:
+        return conn.execute("""
+            SELECT * FROM programs
+            WHERE user_id = ? AND status = 'active'
+            ORDER BY id DESC
+        """, (user_id,)).fetchall()
 
 def get_program_progress(program):
     today = date.today()
@@ -200,6 +214,7 @@ def get_program_progress(program):
 
 
 def save_habit(user_id, username, habit_name, duration_days=7):
+    """Добавляет отдельную активную программу, не завершая другие."""
     habit_name = habit_name.strip()[:100]
     if not habit_name:
         raise ValueError("Название привычки пустое.")
@@ -208,19 +223,26 @@ def save_habit(user_id, username, habit_name, duration_days=7):
 
     now = datetime.now().isoformat(timespec="seconds")
     today = date.today().isoformat()
-
     with connect_db() as conn:
-        conn.execute("""
-            UPDATE programs SET status = 'ended', ended_at = ?
-            WHERE user_id = ? AND status = 'active'
-        """, (now, user_id))
+        existing = conn.execute("""
+            SELECT id FROM programs
+            WHERE user_id = ? AND habit_name = ? AND status = 'active'
+            LIMIT 1
+        """, (user_id, habit_name)).fetchone()
+        if existing:
+            # Повторный выбор той же привычки не создаёт дубликат.
+            conn.execute("""
+                UPDATE user_habits SET username = ?, habit_name = ?, status = 'active'
+                WHERE user_id = ?
+            """, (username or "", habit_name, user_id))
+            conn.commit()
+            return int(existing["id"])
 
-        conn.execute("""
+        cur = conn.execute("""
             INSERT INTO programs
             (user_id, habit_name, duration_days, start_date, status, created_at)
             VALUES (?, ?, ?, ?, 'active', ?)
         """, (user_id, habit_name, duration_days, today, now))
-
         conn.execute("""
             INSERT INTO user_habits (user_id, username, habit_name, day_count, status)
             VALUES (?, ?, ?, 1, 'active')
@@ -231,24 +253,37 @@ def save_habit(user_id, username, habit_name, duration_days=7):
                 status = 'active'
         """, (user_id, username or "", habit_name))
         conn.commit()
+        return int(cur.lastrowid)
 
-
-def reset_habit(user_id):
+def reset_habit(user_id, program_id=None):
+    """Завершает одну программу по ID или все активные, если ID не указан."""
     now = datetime.now().isoformat(timespec="seconds")
     with connect_db() as conn:
-        conn.execute("""
-            UPDATE programs SET status = 'reset', ended_at = ?
-            WHERE user_id = ? AND status = 'active'
-        """, (now, user_id))
-        conn.execute("""
-            UPDATE user_habits SET status = 'inactive'
-            WHERE user_id = ?
-        """, (user_id,))
+        if program_id is None:
+            conn.execute("""
+                UPDATE programs SET status = 'ended', ended_at = ?
+                WHERE user_id = ? AND status = 'active'
+            """, (now, user_id))
+        else:
+            conn.execute("""
+                UPDATE programs SET status = 'ended', ended_at = ?
+                WHERE user_id = ? AND id = ? AND status = 'active'
+            """, (now, user_id, int(program_id)))
+        remaining = conn.execute("""
+            SELECT habit_name FROM programs
+            WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1
+        """, (user_id,)).fetchone()
+        if remaining:
+            conn.execute("""
+                UPDATE user_habits SET habit_name = ?, status = 'active'
+                WHERE user_id = ?
+            """, (remaining["habit_name"], user_id))
+        else:
+            conn.execute("UPDATE user_habits SET status = 'inactive' WHERE user_id = ?", (user_id,))
         conn.commit()
 
-
-def check_in(user_id, note=""):
-    program = get_active_program(user_id)
+def check_in(user_id, note="", program_id=None):
+    program = get_active_program(user_id, program_id)
     if not program:
         return False, "Активной программы нет. Выбери привычку в Mini App."
 
@@ -256,48 +291,29 @@ def check_in(user_id, note=""):
     start = date.fromisoformat(program["start_date"])
     day_number = (today - start).days + 1
     duration = int(program["duration_days"])
-
     if day_number < 1:
         return False, "Дата начала программы некорректна."
-
     if day_number > duration:
         now = datetime.now().isoformat(timespec="seconds")
         with connect_db() as conn:
-            conn.execute("""
-                UPDATE programs SET status = 'completed', ended_at = ?
-                WHERE id = ?
-            """, (now, program["id"]))
-            conn.execute("""
-                UPDATE user_habits SET status = 'completed'
-                WHERE user_id = ?
-            """, (user_id,))
+            conn.execute("UPDATE programs SET status = 'completed', ended_at = ? WHERE id = ?", (now, program["id"]))
+            remaining = conn.execute("SELECT habit_name FROM programs WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1", (user_id,)).fetchone()
+            conn.execute("UPDATE user_habits SET status = ?, habit_name = COALESCE(?, habit_name) WHERE user_id = ?", ("active" if remaining else "completed", remaining["habit_name"] if remaining else None, user_id))
             conn.commit()
-        return False, "Срок программы завершён. Можно начать новую."
+        return False, "Срок программы завершён. Можно продолжить другие программы или начать новую."
 
     try:
         with connect_db() as conn:
-            conn.execute("""
-                INSERT INTO daily_checkins
+            conn.execute("""INSERT INTO daily_checkins
                 (program_id, user_id, checkin_date, note, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                program["id"], user_id, today.isoformat(), note[:500],
-                datetime.now().isoformat(timespec="seconds")
-            ))
-            conn.execute("""
-                UPDATE user_habits SET day_count = ? WHERE user_id = ?
-            """, (day_number, user_id))
+                VALUES (?, ?, ?, ?, ?)""", (program["id"], user_id, today.isoformat(), note[:500], datetime.now().isoformat(timespec="seconds")))
+            conn.execute("UPDATE user_habits SET day_count = ? WHERE user_id = ?", (day_number, user_id))
             conn.commit()
     except sqlite3.IntegrityError:
-        return False, "Сегодня отметка уже сделана."
+        return False, "Сегодня отметка уже сделана для этой программы."
 
     _, completed, percentage = get_program_progress(program)
-    return True, (
-        f"Отметка за день {day_number} сохранена.\n"
-        f"Привычка: {program['habit_name']}\n"
-        f"Отмечено дней: {completed} из {duration} ({percentage}%)."
-    )
-
+    return True, (f"Отметка за день {day_number} сохранена.\nПривычка: {program['habit_name']}\nОтмечено дней: {completed} из {duration} ({percentage}%).")
 
 # ============================================================
 # НАПОМИНАНИЯ
@@ -353,83 +369,72 @@ def save_reminder_settings(user_id, enabled, count, timezone_name):
 
 
 async def reminder_scheduler():
-    """Проверяет расписание раз в 20 секунд; дубли защищены SQLite."""
+    """Отправляет одно напоминание со списком всех активных программ пользователя."""
     while True:
         try:
             with connect_db() as conn:
-                rows = conn.execute("""
-                    SELECT rs.user_id, rs.enabled, rs.reminders_per_day, rs.timezone,
-                           p.habit_name, p.duration_days, p.start_date, p.id AS program_id
-                    FROM reminder_settings rs
-                    JOIN programs p ON p.user_id = rs.user_id AND p.status = 'active'
-                    WHERE rs.enabled = 1
+                users = conn.execute("""
+                    SELECT user_id, enabled, reminders_per_day, timezone
+                    FROM reminder_settings WHERE enabled = 1
                 """).fetchall()
 
             now_utc = datetime.now().astimezone()
-
-            for row in rows:
-                tz_name = valid_timezone(row["timezone"])
+            for settings in users:
+                tz_name = valid_timezone(settings["timezone"])
                 local_now = now_utc.astimezone(ZoneInfo(tz_name))
                 local_time = local_now.strftime("%H:%M")
                 local_date = local_now.date().isoformat()
-
-                times = REMINDER_SCHEDULES.get(
-                    int(row["reminders_per_day"]), ["20:00"]
-                )
+                times = REMINDER_SCHEDULES.get(int(settings["reminders_per_day"]), ["20:00"])
                 if local_time not in times:
-                    continue
-
-                program_start = date.fromisoformat(row["start_date"])
-                day_number = (local_now.date() - program_start).days + 1
-                if day_number < 1 or day_number > int(row["duration_days"]):
                     continue
 
                 with connect_db() as conn:
                     already_sent = conn.execute("""
                         SELECT 1 FROM sent_reminders
                         WHERE user_id = ? AND reminder_date = ? AND reminder_time = ?
-                    """, (row["user_id"], local_date, local_time)).fetchone()
-
+                    """, (settings["user_id"], local_date, local_time)).fetchone()
                     if already_sent:
                         continue
-
-                    # Записываем попытку до отправки, чтобы избежать повторов
-                    # после перезапуска. При ошибке запись удаляем.
-                    conn.execute("""
-                        INSERT INTO sent_reminders
+                    programs = conn.execute("""
+                        SELECT id, habit_name, duration_days, start_date
+                        FROM programs WHERE user_id = ? AND status = 'active'
+                        ORDER BY id DESC
+                    """, (settings["user_id"],)).fetchall()
+                    if not programs:
+                        continue
+                    # Уникальный ключ — пользователь + локальная дата + время:
+                    # одному человеку отправляется одно сообщение со всеми привычками.
+                    conn.execute("""INSERT INTO sent_reminders
                         (user_id, reminder_date, reminder_time, sent_at)
-                        VALUES (?, ?, ?, ?)
-                    """, (
-                        row["user_id"], local_date, local_time,
-                        datetime.now().isoformat(timespec="seconds")
-                    ))
+                        VALUES (?, ?, ?, ?)""", (settings["user_id"], local_date, local_time, datetime.now().isoformat(timespec="seconds")))
                     conn.commit()
 
-                try:
-                    await bot.send_message(
-                        row["user_id"],
-                        f"⏰ Напоминание из «Лаборатории привычек»\n\n"
-                        f"Твоя цель: {row['habit_name']}\n"
-                        f"День {day_number} из {row['duration_days']}.\n\n"
-                        "Если выполнил действие, открой Mini App и отметь день."
-                    )
-                except Exception:
-                    logger.exception("Не удалось отправить напоминание пользователю %s",
-                                     row["user_id"])
+                lines = ["⏰ Напоминание из «Лаборатории привычек»", ""]
+                active_lines = []
+                for program in programs:
+                    day = (local_now.date() - date.fromisoformat(program["start_date"])).days + 1
+                    duration = int(program["duration_days"])
+                    if 1 <= day <= duration:
+                        active_lines.append(f"• {program['habit_name']} — день {day} из {duration}")
+                if not active_lines:
                     with connect_db() as conn:
-                        conn.execute("""
-                            DELETE FROM sent_reminders
-                            WHERE user_id = ? AND reminder_date = ? AND reminder_time = ?
-                        """, (row["user_id"], local_date, local_time))
+                        conn.execute("DELETE FROM sent_reminders WHERE user_id = ? AND reminder_date = ? AND reminder_time = ?", (settings["user_id"], local_date, local_time))
                         conn.commit()
-
+                    continue
+                lines.extend(active_lines)
+                lines.extend(["", "Открой Mini App и отметь выполненные привычки."])
+                try:
+                    await bot.send_message(settings["user_id"], "\n".join(lines), reply_markup=main_keyboard(True))
+                except Exception:
+                    logger.exception("Не удалось отправить напоминание пользователю %s", settings["user_id"])
+                    with connect_db() as conn:
+                        conn.execute("DELETE FROM sent_reminders WHERE user_id = ? AND reminder_date = ? AND reminder_time = ?", (settings["user_id"], local_date, local_time))
+                        conn.commit()
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("Ошибка планировщика напоминаний.")
-
         await asyncio.sleep(20)
-
 
 # ============================================================
 # НАСТАВНИК
@@ -507,18 +512,14 @@ async def ask_mentor(user_id, user_message):
 def main_keyboard(has_program=False):
     builder = InlineKeyboardBuilder()
     if WEB_APP_URL:
-        builder.button(
-            text="🧪 Открыть Лабораторию",
-            web_app=types.WebAppInfo(url=WEB_APP_URL),
-        )
+        builder.button(text="🧪 Открыть Лабораторию", web_app=types.WebAppInfo(url=WEB_APP_URL))
     if has_program:
-        builder.button(text="📊 Мой прогресс", callback_data="progress")
+        builder.button(text="📊 Мои программы", callback_data="progress")
         builder.button(text="✅ Отметить сегодня", callback_data="checkin")
         builder.button(text="🧠 Спросить наставника", callback_data="mentor")
-        builder.button(text="🔄 Завершить программу", callback_data="reset")
+        builder.button(text="🏠 В главное меню", callback_data="home")
     builder.adjust(1)
     return builder.as_markup()
-
 
 def progress_text(program):
     day, completed, percentage = get_program_progress(program)
@@ -538,7 +539,8 @@ def progress_text(program):
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    program = get_active_program(message.from_user.id)
+    programs = get_active_programs(message.from_user.id)
+    program = programs[0] if programs else None
     if program:
         text = (
             f"С возвращением в «Лабораторию привычек»!\n"
@@ -550,28 +552,43 @@ async def cmd_start(message: types.Message):
             "Добро пожаловать в «Лабораторию привычек»!\n"
             "Открой Mini App и выбери привычку."
         )
-    await message.answer(text, reply_markup=main_keyboard(bool(program)))
+    await message.answer(text, reply_markup=main_keyboard(bool(programs)))
 
 
 @dp.message(Command("progress"))
 async def cmd_progress(message: types.Message):
-    program = get_active_program(message.from_user.id)
-    await message.answer(
-        progress_text(program) if program
-        else "Активной программы нет. Открой Mini App."
-    )
+    programs = get_active_programs(message.from_user.id)
+    await message.answer(progress_list_text(programs) if programs else "Активных программ нет. Открой Mini App.")
+
+
+def progress_list_text(programs):
+    if not programs:
+        return "Активных программ пока нет. Открой Mini App и выбери привычку."
+    parts = [f"📊 Мои активные программы: {len(programs)}\n"]
+    for i, program in enumerate(programs, 1):
+        day, completed, percentage = get_program_progress(program)
+        duration = int(program["duration_days"])
+        day_label = f"день {min(day, duration)} из {duration}" if day <= duration else "срок истёк"
+        parts.append(f"{i}. 🎯 {program['habit_name']}\n   📅 {day_label} · отметок {completed}/{duration} · {percentage}%")
+    return "\n\n".join(parts)
 
 
 @dp.message(Command("checkin"))
 async def cmd_checkin(message: types.Message):
-    _, result = check_in(message.from_user.id)
-    await message.answer(result)
+    programs = get_active_programs(message.from_user.id)
+    if len(programs) == 1:
+        _, result = check_in(message.from_user.id, program_id=programs[0]["id"])
+        await message.answer(result, reply_markup=main_keyboard(True))
+    elif programs:
+        await message.answer("У тебя несколько программ. Открой Mini App и выбери нужную для отметки.", reply_markup=main_keyboard(True))
+    else:
+        await message.answer("Активных программ нет. Открой Mini App.", reply_markup=main_keyboard(False))
 
 
 @dp.message(Command("reset"))
 async def cmd_reset(message: types.Message):
     reset_habit(message.from_user.id)
-    await message.answer("Программа завершена. История сохранена.",
+    await message.answer("Все активные программы завершены. История сохранена.",
                          reply_markup=main_keyboard(False))
 
 
@@ -591,28 +608,41 @@ async def cmd_mentor(message: types.Message):
 
 @dp.callback_query(F.data == "progress")
 async def cb_progress(callback: types.CallbackQuery):
-    program = get_active_program(callback.from_user.id)
-    await callback.message.answer(
-        progress_text(program) if program else "Активной программы нет."
-    )
+    programs = get_active_programs(callback.from_user.id)
+    await callback.message.answer(progress_list_text(programs), reply_markup=main_keyboard(bool(programs)))
     await callback.answer()
 
 
 @dp.callback_query(F.data == "checkin")
 async def cb_checkin(callback: types.CallbackQuery):
-    ok, result = check_in(callback.from_user.id)
-    await callback.message.answer(result)
-    await callback.answer("Готово" if ok else "Проверь сообщение")
+    programs = get_active_programs(callback.from_user.id)
+    if len(programs) == 1:
+        ok, result = check_in(callback.from_user.id, program_id=programs[0]["id"])
+    elif programs:
+        ok, result = False, "У тебя несколько программ. Открой Mini App и выбери программу для отметки."
+    else:
+        ok, result = False, "Активных программ нет. Открой Mini App."
+    await callback.message.answer(result, reply_markup=main_keyboard(bool(programs)))
+    await callback.answer("Готово" if ok else "Открой сообщение")
+
+
+@dp.callback_query(F.data == "home")
+async def cb_home(callback: types.CallbackQuery):
+    programs = get_active_programs(callback.from_user.id)
+    await callback.message.answer(
+        "Главное меню. Прогресс сохранён. Открой Лабораторию, чтобы выбрать привычку или посмотреть программы.",
+        reply_markup=main_keyboard(bool(programs)),
+    )
+    await callback.answer("Главное меню")
 
 
 @dp.callback_query(F.data == "reset")
 async def cb_reset(callback: types.CallbackQuery):
     reset_habit(callback.from_user.id)
-    await callback.message.answer(
-        "Программа завершена. История сохранена.",
-        reply_markup=main_keyboard(False),
-    )
-    await callback.answer("Программа завершена")
+    await callback.message.answer("Все активные программы завершены. История и отметки сохранены.", reply_markup=main_keyboard(False))
+    await callback.answer("Программы завершены")
+
+
 
 
 @dp.callback_query(F.data == "mentor")
@@ -636,6 +666,7 @@ class ActionRequest(InitDataRequest):
     action: str
     habit_name: str = ""
     duration_days: int = 7
+    program_id: int | None = None
     note: str = ""
     message: str = ""
     reminders_per_day: int = 1
@@ -680,33 +711,22 @@ def verify_telegram_init_data(init_data):
         )
 
 
-def api_state_for_user(user_id):
-    program = get_active_program(user_id)
-    settings = get_reminder_settings(user_id)
-
-    if not program:
-        return {"program": None, "reminders": settings}
-
+def _program_payload(program):
     day, completed, percentage = get_program_progress(program)
     with connect_db() as conn:
-        checked_today = conn.execute("""
-            SELECT 1 FROM daily_checkins
-            WHERE program_id = ? AND checkin_date = ?
-        """, (program["id"], date.today().isoformat())).fetchone() is not None
-
+        checked_today = conn.execute("SELECT 1 FROM daily_checkins WHERE program_id = ? AND checkin_date = ?", (program["id"], date.today().isoformat())).fetchone() is not None
     return {
-        "program": {
-            "habit_name": program["habit_name"],
-            "duration_days": int(program["duration_days"]),
-            "start_date": program["start_date"],
-            "day_number": day,
-            "completed": completed,
-            "percentage": percentage,
-            "checked_today": checked_today,
-        },
-        "reminders": settings,
+        "id": int(program["id"]), "habit_name": program["habit_name"],
+        "duration_days": int(program["duration_days"]), "start_date": program["start_date"],
+        "day_number": day, "completed": completed, "percentage": percentage,
+        "checked_today": checked_today,
     }
 
+
+def api_state_for_user(user_id):
+    programs = [_program_payload(p) for p in get_active_programs(user_id)]
+    settings = get_reminder_settings(user_id)
+    return {"program": programs[0] if programs else None, "programs": programs, "reminders": settings}
 
 @asynccontextmanager
 async def lifespan(app):
@@ -762,16 +782,30 @@ async def api_action(data: ActionRequest):
             save_habit(user_id, username, data.habit_name, data.duration_days)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+        try:
+            programs = get_active_programs(user_id)
+            await bot.send_message(
+                user_id,
+                f"✅ Программа добавлена: {data.habit_name} ({data.duration_days} дней).\n"
+                f"Активных программ сейчас: {len(programs)}. Прогресс сохранён.",
+                reply_markup=main_keyboard(bool(programs)),
+            )
+        except Exception:
+            logger.exception("Не удалось отправить меню после добавления программы")
         return {"ok": True, "message": "Программа начата.", **api_state_for_user(user_id)}
 
     if data.action == "checkin":
-        ok, message = check_in(user_id, data.note)
+        ok, message = check_in(user_id, data.note, data.program_id)
         return {"ok": ok, "message": message, **api_state_for_user(user_id)}
 
     if data.action == "reset":
-        reset_habit(user_id)
-        return {"ok": True, "message": "Программа завершена. История сохранена.",
-                **api_state_for_user(user_id)}
+        reset_habit(user_id, data.program_id)
+        state = api_state_for_user(user_id)
+        try:
+            await bot.send_message(user_id, "Программа завершена. Остальные программы и отметки сохранены.", reply_markup=main_keyboard(bool(state["programs"])))
+        except Exception:
+            logger.exception("Не удалось обновить меню после завершения программы")
+        return {"ok": True, "message": "Программа завершена. История сохранена.", **state}
 
     if data.action == "mentor":
         answer, used_ai = await ask_mentor(user_id, data.message.strip())
