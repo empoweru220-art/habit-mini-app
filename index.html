@@ -1,625 +1,506 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#0f172a">
-    <title>Лаборатория привычек</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Лаборатория привычек</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+    button:disabled { opacity: .55; cursor: wait; }
+    .habit-card { cursor: pointer; transition: border-color .15s; }
+    .habit-card:active { transform: scale(.99); }
+  </style>
 </head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4">
+  <main class="max-w-md mx-auto pt-4">
+    <header class="text-center mb-6">
+      <span class="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-3 py-1 rounded-full border border-emerald-500/20">
+        ⚡️ Лаборатория привычек
+      </span>
+      <h1 class="text-2xl font-bold mt-3">Лаборатория привычек</h1>
+      <p id="subtitle" class="text-slate-400 text-sm mt-2">
+        Небольшие действия. Реальный прогресс.
+      </p>
+    </header>
 
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between p-4">
-    <main class="max-w-md mx-auto w-full pt-4">
-        <header class="text-center mb-6">
-            <span class="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-3 py-1 rounded-full border border-emerald-500/20">
-                ⚡️ Лаборатория привычек
-            </span>
-            <h1 class="text-2xl font-bold mt-3">Лаборатория привычек</h1>
-            <p id="subtitle" class="text-slate-400 text-sm mt-1">
-                Загружаем твою программу...
-            </p>
-        </header>
+    <section id="loading" class="text-center py-10">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent"></div>
+      <p class="text-sm text-slate-400 mt-3">Загружаем профиль…</p>
+    </section>
 
-        <section id="loading-check" class="text-center py-12">
-            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent mb-3"></div>
-            <p class="text-xs text-slate-400">Синхронизация с базой...</p>
-        </section>
+    <section id="error-screen" class="hidden bg-slate-800 border border-rose-500/30 rounded-2xl p-5 space-y-3">
+      <h2 class="font-bold text-rose-300">Не удалось загрузить профиль</h2>
+      <p id="error-text" class="text-sm text-slate-300">
+        Проверь подключение и повтори попытку.
+      </p>
+      <button id="retry-button" onclick="loadProfile()"
+        class="w-full bg-emerald-500 text-slate-950 font-bold py-3 rounded-xl">
+        Повторить загрузку
+      </button>
+    </section>
 
-        <section id="habits-container" class="space-y-3 hidden">
-            <p class="text-sm text-slate-300 mb-3">Выбери привычку:</p>
+    <section id="habits-screen" class="hidden space-y-3">
+      <h2 class="font-bold text-lg mb-3">Выбери привычку</h2>
 
-            <div onclick="selectHabit('💧 Водный баланс (2л)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer active:border-emerald-500">
-                <h3 class="font-semibold">💧 Водный баланс</h3>
-                <p class="text-xs text-slate-400">Пить воду регулярно в течение дня</p>
-            </div>
+      <label class="block text-sm text-slate-400 mb-1" for="duration">Длительность программы</label>
+      <select id="duration" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 mb-2">
+        <option value="7">7 дней</option>
+        <option value="14">14 дней</option>
+        <option value="21">21 день</option>
+        <option value="30">30 дней</option>
+      </select>
 
-            <div onclick="selectHabit('📵 Цифровой детокс')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer active:border-emerald-500">
-                <h3 class="font-semibold">📵 Цифровой детокс</h3>
-                <p class="text-xs text-slate-400">Меньше экранного времени перед сном</p>
-            </div>
+      <button onclick="selectHabit('💧 Водный баланс (2л)')"
+        class="habit-card w-full text-left bg-slate-800 border border-slate-700 p-4 rounded-xl">
+        <strong>💧 Водный баланс</strong>
+        <p class="text-sm text-slate-400 mt-1">Равномерно пить воду в течение дня</p>
+      </button>
 
-            <div onclick="selectHabit('🌙 Ранний сон (до 23:00)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer active:border-emerald-500">
-                <h3 class="font-semibold">🌙 Ранний сон</h3>
-                <p class="text-xs text-slate-400">Стабильный режим отдыха</p>
-            </div>
+      <button onclick="selectHabit('📵 Цифровой детокс')"
+        class="habit-card w-full text-left bg-slate-800 border border-slate-700 p-4 rounded-xl">
+        <strong>📵 Цифровой детокс</strong>
+        <p class="text-sm text-slate-400 mt-1">Меньше отвлекаться на телефон</p>
+      </button>
 
-            <div onclick="selectHabit('📖 Чтение (20 минут)')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer active:border-emerald-500">
-                <h3 class="font-semibold">📖 Чтение</h3>
-                <p class="text-xs text-slate-400">20 минут чтения в день</p>
-            </div>
+      <button onclick="selectHabit('🌙 Ранний сон (до 23:00)')"
+        class="habit-card w-full text-left bg-slate-800 border border-slate-700 p-4 rounded-xl">
+        <strong>🌙 Ранний сон</strong>
+        <p class="text-sm text-slate-400 mt-1">Стабильный режим отдыха</p>
+      </button>
 
-            <div onclick="selectHabit('🎯 Фокус / Спорт')" class="bg-slate-800 border border-slate-700 p-4 rounded-xl cursor-pointer active:border-emerald-500">
-                <h3 class="font-semibold">🎯 Фокус / Спорт</h3>
-                <p class="text-xs text-slate-400">Тренировка или работа без отвлечений</p>
-            </div>
+      <button onclick="selectHabit('📖 Чтение (20 минут)')"
+        class="habit-card w-full text-left bg-slate-800 border border-slate-700 p-4 rounded-xl">
+        <strong>📖 Чтение</strong>
+        <p class="text-sm text-slate-400 mt-1">20 минут чтения в день</p>
+      </button>
 
-            <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl">
-                <label for="duration" class="block text-sm font-semibold mb-2">
-                    Длительность программы
-                </label>
-                <select id="duration" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm">
-                    <option value="7">7 дней</option>
-                    <option value="14">14 дней</option>
-                    <option value="21">21 день</option>
-                    <option value="30">30 дней</option>
-                </select>
-                <p class="text-xs text-slate-400 mt-2">
-                    Выбери привычку, затем установи длительность программы.
-                </p>
-            </div>
-        </section>
+      <button onclick="selectHabit('🎯 Фокус / Спорт')"
+        class="habit-card w-full text-left bg-slate-800 border border-slate-700 p-4 rounded-xl">
+        <strong>🎯 Фокус / Спорт</strong>
+        <p class="text-sm text-slate-400 mt-1">Короткая тренировка или работа без отвлечений</p>
+      </button>
+    </section>
 
-        <section id="success-screen" class="hidden bg-slate-800 border border-emerald-500/40 p-5 rounded-2xl space-y-4">
-            <div class="text-center">
-                <div class="text-3xl mb-1">🚀</div>
-                <h2 class="text-lg font-bold text-emerald-400">Твоя программа</h2>
-                <p id="selected-habit-title" class="text-sm mt-2"></p>
-            </div>
+    <section id="dashboard" class="hidden bg-slate-800 border border-emerald-500/30 rounded-2xl p-5 space-y-4">
+      <div class="text-center">
+        <div class="text-3xl">🚀</div>
+        <h2 class="text-lg font-bold text-emerald-400 mt-1">Матрица активна</h2>
+        <p id="habit-title" class="text-sm mt-2"></p>
+      </div>
 
-            <div class="bg-slate-900/70 rounded-xl p-4 space-y-3">
-                <p id="program-info" class="text-sm text-slate-300"></p>
+      <div class="bg-slate-900 rounded-xl border border-slate-700 p-3">
+        <div class="flex justify-between text-xs text-slate-400 mb-2">
+          <span id="day-label">День 1 из 7</span>
+          <span id="percent-label" class="text-emerald-400 font-bold">0%</span>
+        </div>
+        <div class="w-full h-2 rounded-full bg-slate-700 overflow-hidden">
+          <div id="progress-bar" class="h-full bg-emerald-500" style="width:0%"></div>
+        </div>
+        <p id="checkin-count" class="text-xs text-slate-400 mt-2"></p>
+      </div>
 
-                <div class="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
-                    <div id="progress-bar" class="bg-emerald-500 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
-                </div>
+      <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
+        <p class="text-sm font-semibold text-emerald-400 mb-2">📌 Задание на сегодня</p>
+        <p id="daily-instruction" class="text-sm text-slate-300"></p>
+      </div>
 
-                <p id="progress-label" class="text-xs text-slate-400">Выполнение по отметкам: 0%</p>
-            </div>
+      <button id="checkin-button" onclick="checkIn()"
+        class="w-full bg-emerald-500 text-slate-950 font-bold py-3 rounded-xl">
+        ✅ Отметить сегодня
+      </button>
 
-            <p id="habit-specific-instructions" class="text-sm text-slate-300 bg-slate-900/60 p-3 rounded-xl"></p>
+      <button onclick="askMentor()"
+        class="w-full bg-slate-700 hover:bg-slate-600 font-semibold py-3 rounded-xl">
+        🧠 Спросить наставника
+      </button>
 
-            <button id="checkin-button" onclick="sendAction({action:'checkin'})"
-                class="w-full bg-emerald-500 text-slate-950 font-bold py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed">
-                ✅ Отметить выполнение сегодня
-            </button>
+      <div class="border-t border-slate-700 pt-4 space-y-3">
+        <h3 class="font-semibold">⏰ Напоминания</h3>
+        <label class="flex items-center justify-between gap-3 text-sm">
+          <span>Получать напоминания</span>
+          <input id="reminders-enabled" type="checkbox" checked class="w-5 h-5 accent-emerald-500">
+        </label>
+        <label class="block text-sm text-slate-400" for="reminders-count">Количество в день</label>
+        <select id="reminders-count" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3">
+          <option value="1">1 — в 20:00</option>
+          <option value="2">2 — в 09:00 и 20:00</option>
+          <option value="3">3 — 09:00, 14:30, 20:00</option>
+          <option value="4">4 — 09:00, 12:40, 16:20, 20:00</option>
+          <option value="5">5 — 09:00, 11:45, 14:30, 17:15, 20:00</option>
+        </select>
+        <p id="timezone-label" class="text-xs text-slate-500"></p>
+        <button onclick="saveReminderSettings()"
+          class="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-xl font-semibold">
+          Сохранить напоминания
+        </button>
+      </div>
 
-            <button id="mentor-button" onclick="showLocalAdvice()"
-                class="w-full bg-slate-700 hover:bg-slate-600 font-semibold py-3 rounded-xl">
-                🧠 Совет наставника
-            </button>
+      <button onclick="closeApp()"
+        class="w-full bg-slate-700 hover:bg-slate-600 py-3 rounded-xl">
+        Вернуться в чат с ботом
+      </button>
+      <button id="reset-button" onclick="resetHabit()"
+        class="w-full text-rose-300 hover:bg-rose-500/10 py-2 rounded-xl text-sm">
+        Сбросить программу и выбрать другую
+      </button>
+    </section>
 
-            <div id="mentor-advice" class="hidden bg-slate-900 border border-emerald-500/30 p-4 rounded-xl">
-                <p class="text-emerald-400 font-semibold text-sm mb-2">🧠 Совет наставника</p>
-                <p id="mentor-advice-text" class="text-sm text-slate-200 leading-relaxed"></p>
-                <p id="mentor-advice-day" class="text-xs text-slate-500 mt-3"></p>
-            </div>
+    <section id="message-box" class="hidden mt-4 rounded-xl border border-slate-700 bg-slate-800 p-4">
+      <p id="message-text" class="text-sm whitespace-pre-line"></p>
+      <textarea id="mentor-input" class="hidden w-full mt-3 bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm"
+        rows="3" maxlength="2000" placeholder="Напиши вопрос наставнику…"></textarea>
+      <div id="mentor-actions" class="hidden mt-2 flex gap-2">
+        <button onclick="sendMentorQuestion()" class="flex-1 bg-emerald-500 text-slate-950 font-bold p-3 rounded-xl">
+          Отправить
+        </button>
+        <button onclick="hideMessage()" class="bg-slate-700 p-3 rounded-xl">Отмена</button>
+      </div>
+    </section>
 
-            <button id="reset-button" onclick="resetHabit()"
-                class="w-full text-rose-400 py-2 text-sm disabled:opacity-50">
-                Сбросить программу и выбрать другую
-            </button>
-        </section>
-
-        <p id="status" class="text-sm text-center text-slate-300 mt-4" role="status" aria-live="polite"></p>
-    </main>
-
-    <footer class="text-center text-xs text-slate-500 pt-8">
-        Habit Lab • Telegram Mini App
-    </footer>
+    <p class="text-center text-xs text-slate-600 mt-6">Habit Lab • Telegram Mini App</p>
+  </main>
 
 <script>
-    const tg = window.Telegram?.WebApp;
+"use strict";
 
-    // Если адрес Cloudflare Tunnel изменится, обнови его здесь.
-    const API_URL = 'https://protocols-teacher-today-exterior.trycloudflare.com';
+const tg = window.Telegram?.WebApp || null;
+const API_TIMEOUT_MS = 12000;
+let currentProgram = null;
+let currentReminders = {
+  enabled: true,
+  reminders_per_day: 1,
+  timezone: "Europe/Warsaw"
+};
+let busy = false;
 
-    const instructions = {
-        '💧 Водный баланс (2л)': 'Распределяй питьё равномерно в течение дня. Ориентируйся на свои потребности и медицинские рекомендации, не заставляй себя пить через силу.',
-        '📵 Цифровой детокс': 'Попробуй убрать телефон за час до сна и заменить ленту спокойным занятием.',
-        '🌙 Ранний сон (до 23:00)': 'Подготовься ко сну заранее: приглуши свет и отложи дела, которые можно закончить завтра.',
-        '📖 Чтение (20 минут)': 'Выдели 20 минут на чтение без уведомлений и отвлечений.',
-        '🎯 Фокус / Спорт': 'Запланируй короткую тренировку или один отрезок сосредоточенной работы.'
-    };
+const instructions = {
+  "💧 Водный баланс (2л)": [
+    "Распредели питьё воды в течение дня. Не пытайся выпить весь объём за один раз.",
+    "Свяжи стакан воды с привычными моментами: после пробуждения и во время перерывов.",
+    "Подготовь воду заранее, чтобы не вспоминать о ней в последний момент.",
+    "Отслеживай, в какие часы чаще всего забываешь пить.",
+    "Сделай воду доступной на рабочем месте.",
+    "Оцени, какой режим питья тебе удобнее поддерживать.",
+    "Подведи итог недели и выбери реалистичный режим на следующую."
+  ],
+  "📵 Цифровой детокс": [
+    "Убери телефон подальше на 20 минут и займись одним делом.",
+    "Отключи ненужные уведомления на время работы.",
+    "Не открывай соцсети в первые 15 минут после пробуждения.",
+    "Перед сном оставь телефон вне досягаемости от кровати.",
+    "Выбери конкретные часы для проверки сообщений.",
+    "Замени одну привычную проверку телефона короткой прогулкой или чтением.",
+    "Посмотри, какие изменения помогли меньше отвлекаться."
+  ],
+  "🌙 Ранний сон (до 23:00)": [
+    "Начни вечернее замедление заранее: приглуши свет и заверши необязательные дела.",
+    "Подготовь одежду и вещи на завтра, чтобы не затягивать вечер.",
+    "Установи время, после которого не начинаешь новые дела.",
+    "Уменьши яркость экранов перед сном.",
+    "Старайся вставать примерно в одно время, если это подходит твоему режиму.",
+    "Отметь, что мешает лечь вовремя, и убери одно препятствие.",
+    "Оцени неделю и выбери один полезный вечерний ритуал."
+  ],
+  "📖 Чтение (20 минут)": [
+    "Выбери текст и читай 20 минут без переключения на телефон.",
+    "Начни с удобного места и заранее приготовленной книги.",
+    "После чтения запиши одну мысль, которую хочешь запомнить.",
+    "Если трудно начать, договорись с собой читать хотя бы пять минут.",
+    "Попробуй читать в одно и то же время дня.",
+    "Убери отвлекающие вкладки и уведомления.",
+    "Подведи итог и выбери книгу или текст на следующую неделю."
+  ],
+  "🎯 Фокус / Спорт": [
+    "Выбери одно конкретное дело или короткую тренировку на сегодня.",
+    "Подготовь всё необходимое заранее, чтобы упростить начало.",
+    "Поставь таймер на 20 минут и не переключайся между задачами.",
+    "Если нет сил, уменьши нагрузку до безопасного минимального шага.",
+    "Запланируй время для тренировки или фокус-сессии заранее.",
+    "Убери одно частое отвлечение на время занятия.",
+    "Оцени, какой формат проще всего повторять на следующей неделе."
+  ]
+};
 
-    // Локальная база советов: 7 дней × 3 варианта на каждую привычку.
-    const dailyAdvice = {
-        '💧 Водный баланс (2л)': [
-            [
-                'Сегодня просто понаблюдай, сколько воды ты пьёшь. Не нужно сразу менять весь распорядок.',
-                'Поставь стакан воды на видное место, чтобы вспоминать о питье без лишних напоминаний.',
-                'Начни с простого: выпей немного воды во время завтрака, если тебе хочется пить.'
-            ],
-            [
-                'Свяжи питьё воды с привычным действием, например с завтраком или обеденным перерывом.',
-                'Если забываешь пить, попробуй держать бутылку рядом с рабочим местом.',
-                'Не пытайся выпить всю дневную норму вечером. Удобнее распределять питьё в течение дня.'
-            ],
-            [
-                'Обрати внимание, в какие часы ты обычно забываешь пить. Добавь напоминание именно на это время.',
-                'Попробуй делать несколько глотков во время естественных перерывов в работе.',
-                'Сегодня оцени, удобно ли тебе пользоваться своей бутылкой или стаканом. Простота помогает регулярности.'
-            ],
-            [
-                'Посмотри, получается ли пить регулярно без постоянных напоминаний. Если нет, оставь одно-два удобных напоминания.',
-                'Включай воду в привычные паузы дня, но не заставляй себя пить, если не хочется.',
-                'Поставь воду рядом с тем местом, где обычно завтракаешь или обедаешь.'
-            ],
-            [
-                'Не стремись выполнить цель любой ценой. Потребность в жидкости зависит от активности, погоды и состояния здоровья.',
-                'Если сегодня много дел, заранее подумай, где удобно попить воды в течение дня.',
-                'Заметь, какой способ напоминает о воде лучше всего: бутылка на виду, стакан или уведомление.'
-            ],
-            [
-                'Проверь, стал ли ты чаще вспоминать о воде без усилий. Это тоже полезный результат.',
-                'Сделай питьё удобным: держи чистый стакан или бутылку там, где они нужны.',
-                'Если ты пропустил несколько перерывов, просто продолжай обычный режим. Не нужно наверстывать всё сразу.'
-            ],
-            [
-                'Подведи итог недели: какой способ помогал пить регулярно и что стоит оставить?',
-                'Выбери одно напоминание, которое оказалось полезным, и используй его на следующей неделе.',
-                'Оцени привычку без самокритики. Важно найти удобный режим, а не добиваться цифры любой ценой.'
-            ]
-        ],
+function el(id) { return document.getElementById(id); }
+function show(id) { el(id).classList.remove("hidden"); }
+function hide(id) { el(id).classList.add("hidden"); }
 
-        '📵 Цифровой детокс': [
-            [
-                'Сегодня обрати внимание, когда рука сама тянется к телефону. Просто замечай такие моменты.',
-                'Выбери одно время, когда ты на 15 минут отложишь телефон и займёшься чем-то другим.',
-                'Убери телефон подальше на время одного приёма пищи. Начни с небольшого шага.'
-            ],
-            [
-                'Отключи уведомления от одного приложения, которое чаще всего отвлекает.',
-                'Перед открытием ленты спроси себя: зачем я сейчас беру телефон? Это поможет действовать осознаннее.',
-                'Попробуй не брать телефон в руки первые 10 минут после пробуждения.'
-            ],
-            [
-                'Перенеси самые отвлекающие приложения с главного экрана, чтобы открывать их не автоматически.',
-                'Выбери замену вечерней ленте: бумажную книгу, спокойную музыку или короткую прогулку.',
-                'Поставь телефон на зарядку подальше от кровати, если это удобно и безопасно.'
-            ],
-            [
-                'Попробуй провести один короткий перерыв без экрана. Не обязательно сразу отказываться от телефона на весь вечер.',
-                'Оставь уведомления только для действительно важных контактов на время отдыха.',
-                'Если открыл приложение по привычке, не ругай себя. Закрой его и вернись к тому, что собирался делать.'
-            ],
-            [
-                'Определи время вечером, после которого ты обычно не открываешь новые ленты или видео.',
-                'Замени один привычный заход в соцсети коротким действием: потянись, пройдись или налей чай.',
-                'Посмотри в настройках, сколько времени сегодня заняли самые отвлекающие приложения.'
-            ],
-            [
-                'Попробуй провести последние 20–30 минут перед сном без развлекательного контента.',
-                'Если телефон нужен как будильник, оставь его доступным для этой задачи, но не открывай ленты.',
-                'Подумай, какие уведомления можно отключить надолго, чтобы не возвращаться к этой настройке каждый день.'
-            ],
-            [
-                'Подведи итог: какое изменение помогло тебе меньше отвлекаться? Оставь именно его.',
-                'Выбери реалистичную границу экранного времени на следующую неделю, а не запрет на всё подряд.',
-                'Если на этой неделе не всё получилось, выясни, что мешало. Измени один конкретный момент вместо жёстких ограничений.'
-            ]
-        ],
+function setLoading(text = "Загружаем профиль…") {
+  el("loading").querySelector("p").textContent = text;
+  show("loading");
+  hide("error-screen");
+  hide("habits-screen");
+  hide("dashboard");
+}
 
-        '🌙 Ранний сон (до 23:00)': [
-            [
-                'Сегодня обрати внимание, во сколько ты обычно начинаешь готовиться ко сну. Это отправная точка.',
-                'Выбери время для спокойного завершения дня и поставь напоминание за 30 минут до него.',
-                'Подготовь заранее то, что обычно приходится делать перед сном: одежду, вещи на завтра или список дел.'
-            ],
-            [
-                'Попробуй просыпаться примерно в одно и то же время. Регулярный график помогает организовать сон.',
-                'За полчаса до сна приглуши свет и выбери спокойное занятие вместо рабочих задач.',
-                'Запиши незавершённые дела на завтра, чтобы не прокручивать их в голове перед сном.'
-            ],
-            [
-                'Определи, что чаще всего задерживает отход ко сну. Сегодня попробуй убрать только одну такую причину.',
-                'Не жди сильной усталости, чтобы начать вечерний ритуал. Начни подготовку заранее.',
-                'Постарайся не переносить сложные рабочие задачи на поздний вечер, если можешь решить их раньше.'
-            ],
-            [
-                'Сделай последовательность действий перед сном простой: умыться, подготовить вещи, приглушить свет.',
-                'Если не хочется спать ровно в выбранное время, всё равно начни спокойную подготовку ко сну.',
-                'Обрати внимание, как поздний кофеин влияет на засыпание. При необходимости сократи его во второй половине дня.'
-            ],
-            [
-                'Попробуй завершить активные дела немного раньше обычного. Даже небольшой сдвиг может облегчить режим.',
-                'Проветри спальню и сделай обстановку комфортной для отдыха.',
-                'Не пытайся компенсировать недосып постоянным изменением времени подъёма. Старайся соблюдать устойчивый график.'
-            ],
-            [
-                'Вспомни, в какой день тебе было легче лечь вовремя. Что помогло повторить этот сценарий?',
-                'Установи напоминание о начале вечернего ритуала, а не только о времени отхода ко сну.',
-                'Если один вечер затянулся, не считай неделю проваленной. На следующий день вернись к обычному режиму.'
-            ],
-            [
-                'Подведи итог недели: что сильнее всего помогало тебе вовремя завершать день?',
-                'Выбери один вечерний ритуал, который готов повторять и дальше.',
-                'Оцени не только время отхода ко сну, но и самочувствие. При постоянных проблемах со сном стоит обсудить их с врачом.'
-            ]
-        ],
+function showError(message) {
+  hide("loading");
+  hide("habits-screen");
+  hide("dashboard");
+  el("error-text").textContent = message;
+  show("error-screen");
+}
 
-        '📖 Чтение (20 минут)': [
-            [
-                'Выбери книгу, которую действительно хочется читать. Необязательно начинать с самой сложной или полезной.',
-                'Положи книгу на видное место, чтобы было проще вспомнить о запланированных 20 минутах.',
-                'Сегодня достаточно начать. Если трудно выделить 20 минут, прочитай хотя бы несколько страниц.'
-            ],
-            [
-                'Привяжи чтение к существующему ритуалу: например, читай после завтрака или перед сном.',
-                'На время чтения отключи уведомления, чтобы не переключаться между книгой и телефоном.',
-                'Заранее выбери главу или небольшой раздел. Так будет проще начать без долгих раздумий.'
-            ],
-            [
-                'Если книга не увлекает, честно оцени, хочется ли продолжать. Привычка не должна превращаться в наказание.',
-                'Попробуй читать в одном и том же удобном месте. Постоянное место облегчает начало.',
-                'После чтения запиши одну интересную мысль. Это поможет лучше запомнить прочитанное.'
-            ],
-            [
-                'Если день занятой, раздели чтение на два коротких отрезка по 10 минут.',
-                'Держи книгу или электронную читалку под рукой, чтобы использовать свободное время.',
-                'Не возвращайся постоянно к началу из-за каждой пропущенной детали. Продолжай читать и отмечай важное по необходимости.'
-            ],
-            [
-                'Перед чтением отложи остальные дела на 20 минут и сосредоточься только на тексте.',
-                'Если мысли отвлекают, отметь страницу и спокойно вернись к ней. Не нужно начинать заново.',
-                'Попробуй после чтения пересказать себе основную мысль одним-двумя предложениями.'
-            ],
-            [
-                'Заметь, в какое время тебе легче всего читать. По возможности оставь это время для книги.',
-                'Если устал от серьёзного текста, выбери более лёгкое чтение, но сохрани сам ритуал.',
-                'Не измеряй результат только количеством страниц. Важнее регулярно возвращаться к чтению.'
-            ],
-            [
-                'Подведи итог: когда тебе было легче читать и что чаще всего мешало?',
-                'Выбери книгу для следующей недели заранее, чтобы не тратить время на поиски в момент чтения.',
-                'Поздравь себя с регулярной практикой. Теперь выбери реалистичную цель для следующей недели.'
-            ]
-        ],
+function getTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Warsaw";
+  } catch (_) {
+    return "Europe/Warsaw";
+  }
+}
 
-        '🎯 Фокус / Спорт': [
-            [
-                'Выбери одну конкретную задачу или короткую тренировку. Чем яснее следующий шаг, тем легче начать.',
-                'Начни с пяти минут работы или лёгкой разминки. После начала решить продолжать обычно проще.',
-                'Убери с рабочего места всё лишнее или подготовь спортивную одежду заранее.'
-            ],
-            [
-                'Попробуй поработать 20–25 минут над одной задачей без переключения между приложениями.',
-                'Перед тренировкой определи минимальный план: например, разминка и несколько упражнений по самочувствию.',
-                'Запиши одну главную задачу дня и начни с неё до того, как переключишься на мелочи.'
-            ],
-            [
-                'Если трудно сосредоточиться, разбей задачу на шаги, которые можно выполнить за 10–15 минут.',
-                'Запланируй короткую прогулку или разминку в перерыве, если долго сидишь на одном месте.',
-                'На время рабочего отрезка убери телефон из поля зрения и оставь только нужные материалы.'
-            ],
-            [
-                'Перед началом работы сформулируй, какой конкретный результат должен быть через 25 минут.',
-                'Не увеличивай нагрузку резко. Для тренировки выбирай уровень, соответствующий твоей подготовке.',
-                'Если отвлёкся, просто вернись к задаче. Не трать время на самокритику.'
-            ],
-            [
-                'Запланируй перерыв между отрезками сосредоточенной работы, чтобы не доводить себя до полного утомления.',
-                'Сделай тренировку настолько удобной, чтобы для начала не требовалась долгая подготовка.',
-                'Отмечай завершённые небольшие задачи. Видимый результат помогает сохранять мотивацию.'
-            ],
-            [
-                'Посмотри, в какое время тебе проще сосредоточиться или тренироваться, и используй это наблюдение.',
-                'Если сегодня мало сил, уменьши объём задачи или выбери лёгкую активность вместо полного отказа.',
-                'Подготовь всё необходимое накануне, чтобы завтра было меньше причин откладывать начало.'
-            ],
-            [
-                'Подведи итог недели: какой приём лучше помогал начинать и доводить дело до конца?',
-                'Выбери одну привычку, которая поможет тебе легче входить в рабочий или тренировочный режим.',
-                'Планируй следующую неделю с учётом реальной нагрузки. Устойчивый темп полезнее краткого рывка.'
-            ]
-        ]
-    };
+function requireTelegramAuth() {
+  if (!tg || !tg.initData) {
+    throw new Error("Открой Mini App кнопкой из чата с Telegram-ботом. В обычном браузере авторизация Telegram недоступна.");
+  }
+  return tg.initData;
+}
 
-    let selectedHabit = null;
-    let currentProgramDay = 1;
-    let currentProgramDuration = 7;
-    let busy = false;
-    let lastAdviceByHabit = {};
+async function api(path, payload = {}) {
+  const initData = requireTelegramAuth();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
-    function show(id) {
-        document.getElementById(id).classList.remove('hidden');
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+      body: JSON.stringify({ initData, ...payload })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || `Ошибка сервера (${response.status})`);
     }
-
-    function hide(id) {
-        document.getElementById(id).classList.add('hidden');
+    return data;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Сервер не ответил за 12 секунд. Проверь соединение и повтори загрузку.");
     }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-    function setStatus(message) {
-        document.getElementById('status').textContent = message || '';
+function showChoices() {
+  currentProgram = null;
+  hide("loading");
+  hide("error-screen");
+  hide("dashboard");
+  hide("message-box");
+  show("habits-screen");
+  el("subtitle").textContent = "Выбери цель и начни с небольшого шага.";
+}
+
+function showDashboard(program, reminders) {
+  currentProgram = program;
+  currentReminders = reminders || currentReminders;
+  hide("loading");
+  hide("error-screen");
+  hide("habits-screen");
+  show("dashboard");
+  hide("message-box");
+
+  const duration = Number(program.duration_days || 7);
+  const day = Number(program.day_number || 1);
+  const completed = Number(program.completed || 0);
+  const percentage = Number(program.percentage || 0);
+
+  el("habit-title").textContent = `Цель: ${program.habit_name}`;
+  el("day-label").textContent = `День ${Math.min(day, duration)} из ${duration}`;
+  el("percent-label").textContent = `${percentage}% выполнено`;
+  el("progress-bar").style.width = `${Math.max(0, Math.min(100, percentage))}%`;
+  el("checkin-count").textContent = `Отмечено дней: ${completed} из ${duration}`;
+
+  const list = instructions[program.habit_name] || [
+    "Выбери конкретное действие, выполни его и отметь результат."
+  ];
+  const tipIndex = Math.max(0, (day - 1) % list.length);
+  el("daily-instruction").textContent = list[tipIndex];
+
+  el("checkin-button").disabled = Boolean(program.checked_today);
+  el("checkin-button").textContent = program.checked_today
+    ? "✅ Сегодня уже отмечено"
+    : "✅ Отметить сегодня";
+
+  el("reminders-enabled").checked = Boolean(currentReminders.enabled);
+  el("reminders-count").value = String(currentReminders.reminders_per_day || 1);
+  el("timezone-label").textContent =
+    `Часовой пояс: ${currentReminders.timezone || getTimezone()}`;
+
+  el("subtitle").textContent = "Твой план и текущий прогресс.";
+}
+
+async function loadProfile() {
+  setLoading();
+  try {
+    const data = await api("/api/state");
+    if (data.program) showDashboard(data.program, data.reminders);
+    else {
+      currentReminders = data.reminders || currentReminders;
+      showChoices();
     }
+  } catch (error) {
+    showError(error.message || "Не удалось загрузить профиль.");
+  }
+}
 
-    function setBusy(value) {
-        busy = value;
+async function selectHabit(habitName) {
+  if (busy) return;
+  busy = true;
+  setLoading("Сохраняем выбранную привычку…");
 
-        ['checkin-button', 'reset-button'].forEach(id => {
-            const button = document.getElementById(id);
-            if (button) button.disabled = value;
-        });
+  try {
+    const data = await api("/api/action", {
+      action: "start_habit",
+      habit_name: habitName,
+      duration_days: Number(el("duration").value)
+    });
+    if (!data.program) throw new Error("Сервер не вернул активную программу.");
+    showDashboard(data.program, data.reminders);
+  } catch (error) {
+    showError(error.message || "Не удалось начать программу.");
+  } finally {
+    busy = false;
+  }
+}
 
-        document.querySelectorAll('#habits-container [onclick]').forEach(element => {
-            element.style.pointerEvents = value ? 'none' : '';
-            element.style.opacity = value ? '0.6' : '';
-        });
+async function checkIn() {
+  if (busy || !currentProgram) return;
+  busy = true;
+  el("checkin-button").disabled = true;
+
+  try {
+    const data = await api("/api/action", { action: "checkin" });
+    showMessage(data.message || "Запрос обработан.");
+    if (data.program) showDashboard(data.program, data.reminders);
+    else showChoices();
+  } catch (error) {
+    showMessage(error.message || "Не удалось сохранить отметку.");
+    el("checkin-button").disabled = false;
+  } finally {
+    busy = false;
+  }
+}
+
+async function resetHabit() {
+  if (busy || !currentProgram) return;
+  if (!confirm("Завершить текущую программу? История и отметки сохранятся.")) return;
+
+  busy = true;
+  setLoading("Завершаем программу…");
+  try {
+    const data = await api("/api/action", { action: "reset" });
+    if (!data.ok) throw new Error(data.message || "Сброс не подтверждён сервером.");
+    currentProgram = null;
+    showChoices();
+    showMessage(data.message || "Программа завершена. Выбери новую привычку.");
+  } catch (error) {
+    showError(error.message || "Не удалось завершить программу.");
+  } finally {
+    busy = false;
+  }
+}
+
+async function saveReminderSettings() {
+  if (busy) return;
+  busy = true;
+
+  try {
+    const data = await api("/api/action", {
+      action: "reminder_settings",
+      reminders_enabled: el("reminders-enabled").checked,
+      reminders_per_day: Number(el("reminders-count").value),
+      timezone: getTimezone()
+    });
+    currentReminders = data.reminders || currentReminders;
+    if (data.program) showDashboard(data.program, currentReminders);
+    showMessage(data.message || "Настройки сохранены.");
+  } catch (error) {
+    showMessage(error.message || "Не удалось сохранить настройки.");
+  } finally {
+    busy = false;
+  }
+}
+
+function askMentor() {
+  el("message-text").textContent = "Напиши вопрос наставнику:";
+  el("mentor-input").value = "";
+  show("message-box");
+  show("mentor-input");
+  show("mentor-actions");
+  el("mentor-input").focus();
+}
+
+async function sendMentorQuestion() {
+  const question = el("mentor-input").value.trim();
+  if (!question) {
+    el("message-text").textContent = "Сначала напиши вопрос.";
+    return;
+  }
+  if (busy) return;
+  busy = true;
+  el("message-text").textContent = "Наставник готовит ответ…";
+
+  try {
+    const data = await api("/api/action", {
+      action: "mentor",
+      message: question
+    });
+    el("message-text").textContent =
+      `${data.used_ai ? "🧠 ИИ-наставник" : "💡 Автоматическая подсказка"}\n\n${data.message}`;
+    hide("mentor-input");
+    hide("mentor-actions");
+  } catch (error) {
+    el("message-text").textContent = error.message || "Не удалось получить ответ.";
+  } finally {
+    busy = false;
+  }
+}
+
+function showMessage(message) {
+  el("message-text").textContent = message;
+  hide("mentor-input");
+  hide("mentor-actions");
+  show("message-box");
+}
+
+function hideMessage() {
+  hide("message-box");
+}
+
+function closeApp() {
+  if (tg && typeof tg.close === "function") tg.close();
+  else showMessage("Закрой окно и вернись в чат с ботом.");
+}
+
+// Готовность Telegram сообщаем сразу, не дожидаясь сетевых запросов.
+if (tg) {
+  try {
+    tg.ready();
+    tg.expand();
+  } catch (error) {
+    console.warn("Telegram WebApp init:", error);
+  }
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  // Тайм-аут визуального ожидания — даже если запрос подвиснет,
+  // пользователь увидит ошибку и кнопку повтора.
+  const safetyTimer = setTimeout(() => {
+    if (!el("loading").classList.contains("hidden")) {
+      showError("Загрузка занимает слишком много времени. Нажми «Повторить загрузку».");
     }
+  }, 13000);
 
-    function showHabitChoices() {
-        selectedHabit = null;
-        hide('loading-check');
-        hide('success-screen');
-        hide('mentor-advice');
-        show('habits-container');
-
-        document.getElementById('subtitle').textContent = 'Выбери привычку и длительность';
-    }
-
-    function showDashboard(habit, duration, program = null) {
-        selectedHabit = habit;
-        currentProgramDuration = Number(duration) || 7;
-
-        hide('loading-check');
-        hide('habits-container');
-        show('success-screen');
-
-        document.getElementById('subtitle').textContent = 'Твоя программа';
-        document.getElementById('selected-habit-title').textContent = habit;
-        document.getElementById('habit-specific-instructions').textContent =
-            instructions[habit] || 'Выбери небольшой выполнимый шаг на сегодня.';
-
-        const info = document.getElementById('program-info');
-        const bar = document.getElementById('progress-bar');
-        const label = document.getElementById('progress-label');
-        const checkinButton = document.getElementById('checkin-button');
-
-        if (!program) {
-            currentProgramDay = 1;
-            info.textContent = `Программа на ${duration} дней. Получаем данные...`;
-            bar.style.width = '0%';
-            label.textContent = 'Загрузка прогресса...';
-            checkinButton.disabled = true;
-            hide('mentor-advice');
-            return;
-        }
-
-        const day = Number(program.day_number) || 1;
-        const total = Number(program.duration_days) || duration;
-        const completed = Number(program.completed) || 0;
-        const percentage = Number(program.percentage) || 0;
-        const checkedToday = Boolean(program.checked_today);
-
-        currentProgramDay = Math.min(day, total);
-        currentProgramDuration = total;
-
-        info.textContent =
-            `День ${Math.min(day, total)} из ${total}. Отмечено дней: ${completed} из ${total}.`;
-
-        bar.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
-        label.textContent = `Выполнение по отметкам: ${percentage}%`;
-
-        if (checkedToday) {
-            checkinButton.textContent = '✅ Сегодня уже отмечено';
-            checkinButton.disabled = true;
-        } else if (day > total) {
-            checkinButton.textContent = 'Программа завершена';
-            checkinButton.disabled = true;
-        } else {
-            checkinButton.textContent = '✅ Отметить выполнение сегодня';
-            checkinButton.disabled = false;
-        }
-    }
-
-    function showLocalAdvice() {
-        if (!selectedHabit) {
-            setStatus('Сначала выбери привычку.');
-            return;
-        }
-
-        const habitAdvice = dailyAdvice[selectedHabit];
-
-        if (!habitAdvice || habitAdvice.length === 0) {
-            setStatus('Для этой привычки пока нет советов.');
-            return;
-        }
-
-        // Для программ длиннее 7 дней повторяем тематический цикл.
-        const dayIndex = (Math.max(1, currentProgramDay) - 1) % habitAdvice.length;
-        const options = habitAdvice[dayIndex];
-
-        let available = options.filter(
-            advice => advice !== lastAdviceByHabit[selectedHabit]
-        );
-
-        if (available.length === 0) {
-            available = options;
-        }
-
-        const advice = available[Math.floor(Math.random() * available.length)];
-        lastAdviceByHabit[selectedHabit] = advice;
-
-        document.getElementById('mentor-advice-text').textContent = advice;
-        document.getElementById('mentor-advice-day').textContent =
-    `День ${currentProgramDay} из ${currentProgramDuration}`;
-
-        show('mentor-advice');
-        setStatus('');
-    }
-
-    async function apiRequest(path, data) {
-        if (!tg || !tg.initData) {
-            throw new Error('Открой Mini App через кнопку Telegram-бота.');
-        }
-
-        const response = await fetch(`${API_URL}${path}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                initData: tg.initData,
-                ...data
-            })
-        });
-
-        let result;
-
-        try {
-            result = await response.json();
-        } catch {
-            throw new Error(`Сервер вернул неожиданный ответ (HTTP ${response.status}).`);
-        }
-
-        if (!response.ok) {
-            throw new Error(result.detail || `Ошибка сервера: ${response.status}`);
-        }
-
-        return result;
-    }
-
-    async function sendAction(payload) {
-        if (busy) return null;
-
-        setBusy(true);
-        setStatus('Отправляем запрос серверу...');
-
-        try {
-            const result = await apiRequest('/api/action', payload);
-
-            if (result.program) {
-                showDashboard(
-                    result.program.habit_name,
-                    result.program.duration_days,
-                    result.program
-                );
-            } else if (payload.action === 'reset') {
-                showHabitChoices();
-            }
-
-            setStatus(result.message || 'Данные обновлены.');
-
-            return result;
-        } catch (error) {
-            console.error('Ошибка API:', error);
-            setStatus(`Не удалось выполнить действие: ${error.message}`);
-            return null;
-        } finally {
-            setBusy(false);
-        }
-    }
-
-    async function selectHabit(habit) {
-        if (busy) return;
-
-        const duration = Number(document.getElementById('duration').value || 7);
-
-        showDashboard(habit, duration);
-        setBusy(true);
-        setStatus('Сохраняем программу в базе...');
-
-        try {
-            const result = await apiRequest('/api/action', {
-                action: 'select_habit',
-                habit_name: habit,
-                duration_days: duration
-            });
-
-            if (result.program) {
-                showDashboard(
-                    result.program.habit_name,
-                    result.program.duration_days,
-                    result.program
-                );
-            }
-
-            setStatus(result.message || 'Программа сохранена.');
-        } catch (error) {
-            console.error('Ошибка выбора привычки:', error);
-            showHabitChoices();
-            setStatus(`Не удалось сохранить привычку: ${error.message}`);
-        } finally {
-            setBusy(false);
-        }
-    }
-
-    async function resetHabit() {
-        if (busy) return;
-
-        const confirmed = confirm(
-            'Завершить текущую программу и выбрать другую? История отметок будет сохранена.'
-        );
-
-        if (!confirmed) return;
-
-        const result = await sendAction({ action: 'reset' });
-
-        if (result && result.ok) {
-            showHabitChoices();
-            setStatus(result.message || 'Программа завершена. Выбери новую привычку.');
-        }
-    }
-
-    async function loadProfile() {
-        if (tg && typeof tg.expand === 'function') {
-            tg.expand();
-        }
-
-        if (tg && typeof tg.ready === 'function') {
-            tg.ready();
-        }
-
-        hide('habits-container');
-        hide('success-screen');
-        show('loading-check');
-        setStatus('');
-
-        if (!tg || !tg.initData) {
-            showHabitChoices();
-            setStatus('Открой Mini App через Telegram, чтобы загрузить профиль из базы.');
-            return;
-        }
-
-        try {
-            const result = await apiRequest('/api/state', {});
-
-            hide('loading-check');
-
-            if (result.program) {
-                showDashboard(
-                    result.program.habit_name,
-                    result.program.duration_days,
-                    result.program
-                );
-                setStatus('Прогресс загружен из базы.');
-            } else {
-                showHabitChoices();
-                setStatus('Активной программы нет. Выбери привычку.');
-            }
-        } catch (error) {
-            console.error('Ошибка загрузки профиля:', error);
-            showHabitChoices();
-            setStatus(`Не удалось загрузить профиль: ${error.message}`);
-        }
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', loadProfile, { once: true });
-    } else {
-        loadProfile();
-    }
+  loadProfile().finally(() => clearTimeout(safetyTimer));
+});
 </script>
 </body>
 </html>
