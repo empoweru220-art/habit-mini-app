@@ -124,6 +124,20 @@ def init_db():
             sent_at TEXT NOT NULL,
             UNIQUE(user_id, reminder_date, reminder_time)
         );
+
+        CREATE TABLE IF NOT EXISTS program_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            program_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            event_key TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            sent_at TEXT,
+            UNIQUE(program_id, event_key),
+            FOREIGN KEY(program_id) REFERENCES programs(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_program_events_pending
+        ON program_events(user_id, sent_at);
         """)
 
         # Миграция старых активных привычек. Выполняется только,
@@ -186,18 +200,105 @@ def get_active_programs(user_id):
             ORDER BY id DESC
         """, (user_id,)).fetchall()
 
+MAX_CALENDAR_DAYS = {7: 11, 14: 21, 21: 32, 30: 45}
+
+
+def user_timezone(user_id):
+    settings = get_reminder_settings(user_id)
+    return ZoneInfo(valid_timezone(settings.get("timezone", "Europe/Warsaw")))
+
+
+def local_today(user_id):
+    return datetime.now().astimezone(user_timezone(user_id)).date()
+
+
+def program_limits(program):
+    duration = int(program["duration_days"])
+    max_days = MAX_CALENDAR_DAYS.get(duration, duration)
+    start = date.fromisoformat(program["start_date"])
+    deadline = start + timedelta(days=max_days - 1)
+    return max_days, deadline
+
+
+def queue_program_event(conn, program, event_key, message):
+    conn.execute("""INSERT OR IGNORE INTO program_events
+        (program_id, user_id, event_key, message, created_at)
+        VALUES (?, ?, ?, ?, ?)""",
+        (program["id"], program["user_id"], event_key, message,
+         datetime.now().isoformat(timespec="seconds")))
+
+
+async def dispatch_program_events(user_id):
+    """Доставляет накопленные события; sent_at защищает от повторной отправки."""
+    with connect_db() as conn:
+        rows = conn.execute("""SELECT id, message FROM program_events
+            WHERE user_id = ? AND sent_at IS NULL ORDER BY id""", (user_id,)).fetchall()
+    has_active = bool(get_active_programs(user_id))
+    for row in rows:
+        try:
+            await bot.send_message(user_id, row["message"], reply_markup=main_keyboard(has_active))
+            with connect_db() as conn:
+                conn.execute("UPDATE program_events SET sent_at = ? WHERE id = ? AND sent_at IS NULL",
+                             (datetime.now().isoformat(timespec="seconds"), row["id"]))
+                conn.commit()
+        except Exception:
+            logger.exception("Не удалось отправить событие программы %s", row["id"])
+
+
+def evaluate_programs_for_user(user_id, today=None):
+    """Проверяет пропуски, предельный срок и разовое предупреждение."""
+    today = today or local_today(user_id)
+    messages = []
+    now = datetime.now().isoformat(timespec="seconds")
+    with connect_db() as conn:
+        programs = conn.execute("SELECT * FROM programs WHERE user_id = ? AND status = 'active'", (user_id,)).fetchall()
+        for program in programs:
+            start = date.fromisoformat(program["start_date"])
+            max_days, deadline = program_limits(program)
+            duration = int(program["duration_days"])
+            completed = conn.execute("SELECT COUNT(*) FROM daily_checkins WHERE program_id = ?", (program["id"],)).fetchone()[0]
+            if completed >= duration:
+                conn.execute("UPDATE programs SET status='completed', ended_at=? WHERE id=? AND status='active'", (now, program["id"]))
+                queue_program_event(conn, program, "completed", f"🏁 Отличная работа! Программа «{program['habit_name']}» завершена: {duration} из {duration} отметок. История сохранена.\n\nМожно выбрать следующую ступень — более длинную программу — или начать другую привычку.")
+                messages.append(user_id)
+                continue
+            if today > deadline:
+                conn.execute("UPDATE programs SET status='interrupted', ended_at=? WHERE id=? AND status='active'", (now, program["id"]))
+                queue_program_event(conn, program, "deadline_expired", f"⌛ Программа «{program['habit_name']}» завершена досрочно: предельный срок в {max_days} календарных дней закончился. Отметки и история сохранены. Можно начать её заново или выбрать другую привычку.")
+                messages.append(user_id)
+                continue
+            # Два последних полностью завершившихся календарных дня без отметок.
+            yesterday = today - timedelta(days=1)
+            day_before = today - timedelta(days=2)
+            if day_before >= start:
+                missed = conn.execute("""SELECT COUNT(*) FROM daily_checkins
+                    WHERE program_id=? AND checkin_date IN (?, ?)""",
+                    (program["id"], day_before.isoformat(), yesterday.isoformat())).fetchone()[0]
+                if missed == 0:
+                    conn.execute("UPDATE programs SET status='interrupted', ended_at=? WHERE id=? AND status='active'", (now, program["id"]))
+                    queue_program_event(conn, program, "two_missed_days", f"Программа «{program['habit_name']}» остановлена: два календарных дня подряд прошли без отметок. Это не обнуляет твои результаты — вся история сохранена. Если хочешь, можно начать программу снова.")
+                    messages.append(user_id)
+                    continue
+            if deadline - timedelta(days=2) <= today <= deadline:
+                days_remaining = max(0, (deadline - today).days)
+                queue_program_event(conn, program, "deadline_warning", f"⏳ Напоминание: у программы «{program['habit_name']}» осталось {days_remaining} дн. до окончания допустимого срока. Нужно ещё {duration - completed} отметок, чтобы завершить её успешно.")
+                messages.append(user_id)
+        # Поддерживаем сводную таблицу совместимой с несколькими программами.
+        remaining = conn.execute("SELECT habit_name FROM programs WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1", (user_id,)).fetchone()
+        status = 'active' if remaining else 'inactive'
+        conn.execute("UPDATE user_habits SET status=?, habit_name=COALESCE(?, habit_name) WHERE user_id=?",
+                     (status, remaining["habit_name"] if remaining else None, user_id))
+        conn.commit()
+    return bool(messages)
+
+
 def get_program_progress(program):
-    today = date.today()
+    today = local_today(int(program["user_id"]))
     start = date.fromisoformat(program["start_date"])
     day_number = max(1, (today - start).days + 1)
     duration = int(program["duration_days"])
-
     with connect_db() as conn:
-        completed = conn.execute("""
-            SELECT COUNT(*) AS total FROM daily_checkins
-            WHERE program_id = ?
-        """, (program["id"],)).fetchone()["total"]
-
+        completed = conn.execute("SELECT COUNT(*) AS total FROM daily_checkins WHERE program_id = ?", (program["id"],)).fetchone()["total"]
     return day_number, completed, round(min(completed, duration) / duration * 100)
 
 
@@ -210,7 +311,7 @@ def save_habit(user_id, username, habit_name, duration_days=7):
         raise ValueError("Недопустимая длительность программы.")
 
     now = datetime.now().isoformat(timespec="seconds")
-    today = date.today().isoformat()
+    today = local_today(user_id).isoformat()
     with connect_db() as conn:
         existing = conn.execute("""
             SELECT id FROM programs
@@ -271,37 +372,45 @@ def reset_habit(user_id, program_id=None):
         conn.commit()
 
 def check_in(user_id, note="", program_id=None):
+    today = local_today(user_id)
+    evaluate_programs_for_user(user_id, today)
     program = get_active_program(user_id, program_id)
     if not program:
-        return False, "Активной программы нет. Выбери привычку в Mini App."
-
-    today = date.today()
+        return False, "Активной программы нет или она уже завершена. Выбери привычку в Mini App."
     start = date.fromisoformat(program["start_date"])
     day_number = (today - start).days + 1
     duration = int(program["duration_days"])
+    max_days, deadline = program_limits(program)
     if day_number < 1:
         return False, "Дата начала программы некорректна."
-    if day_number > duration:
-        now = datetime.now().isoformat(timespec="seconds")
-        with connect_db() as conn:
-            conn.execute("UPDATE programs SET status = 'completed', ended_at = ? WHERE id = ?", (now, program["id"]))
-            remaining = conn.execute("SELECT habit_name FROM programs WHERE user_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1", (user_id,)).fetchone()
-            conn.execute("UPDATE user_habits SET status = ?, habit_name = COALESCE(?, habit_name) WHERE user_id = ?", ("active" if remaining else "completed", remaining["habit_name"] if remaining else None, user_id))
-            conn.commit()
-        return False, "Срок программы завершён. Можно продолжить другие программы или начать новую."
-
+    if today > deadline:
+        evaluate_programs_for_user(user_id, today)
+        return False, "Допустимый срок программы завершён. История отметок сохранена."
     try:
         with connect_db() as conn:
-            conn.execute("""INSERT INTO daily_checkins
-                (program_id, user_id, checkin_date, note, created_at)
-                VALUES (?, ?, ?, ?, ?)""", (program["id"], user_id, today.isoformat(), note[:500], datetime.now().isoformat(timespec="seconds")))
-            conn.execute("UPDATE user_habits SET day_count = ? WHERE user_id = ?", (day_number, user_id))
+            conn.execute("INSERT INTO daily_checkins (program_id, user_id, checkin_date, note, created_at) VALUES (?, ?, ?, ?, ?)",
+                         (program["id"], user_id, today.isoformat(), note[:500], datetime.now().isoformat(timespec="seconds")))
+            completed = conn.execute("SELECT COUNT(*) FROM daily_checkins WHERE program_id=?", (program["id"],)).fetchone()[0]
+            conn.execute("UPDATE user_habits SET day_count=? WHERE user_id=?", (completed, user_id))
+            percentage = round(min(completed, duration) / duration * 100)
+            if completed >= duration:
+                conn.execute("UPDATE programs SET status='completed', ended_at=? WHERE id=? AND status='active'",
+                             (datetime.now().isoformat(timespec="seconds"), program["id"]))
+                queue_program_event(conn, program, "completed", f"🏁 Поздравляю! Программа «{program['habit_name']}» завершена: {duration} из {duration} отметок.\n\nТы довёл дело до конца. История сохранена. Следующий шаг — перейти на программу подлиннее, выбрать другую привычку или пока остановиться.")
+                remaining = conn.execute("SELECT habit_name FROM programs WHERE user_id=? AND status='active' AND id<>? ORDER BY id DESC LIMIT 1", (user_id, program["id"])).fetchone()
+                conn.execute("UPDATE user_habits SET status=?, habit_name=COALESCE(?, habit_name) WHERE user_id=?", ("active" if remaining else "completed", remaining["habit_name"] if remaining else None, user_id))
+            else:
+                for threshold, label in ((50, "50"), (75, "75")):
+                    if percentage >= threshold:
+                        queue_program_event(conn, program, f"milestone_{label}", f"🔥 Отличный темп! По программе «{program['habit_name']}» выполнено {percentage}%. Продолжай в своём ритме — осталось {duration-completed} отметок.")
             conn.commit()
     except sqlite3.IntegrityError:
         return False, "Сегодня отметка уже сделана для этой программы."
-
-    _, completed, percentage = get_program_progress(program)
-    return True, (f"Отметка за день {day_number} сохранена.\nПривычка: {program['habit_name']}\nОтмечено дней: {completed} из {duration} ({percentage}%).")
+    if completed >= duration:
+        message = f"🏁 Программа завершена! Отмечено {completed} из {duration} дней (100%). История сохранена."
+    else:
+        message = f"Отметка сохранена.\nПривычка: {program['habit_name']}\nОтмечено дней: {completed} из {duration} ({percentage}%).\nКалендарный день: {day_number} из {max_days}."
+    return True, message
 
 # ============================================================
 # НАПОМИНАНИЯ
@@ -362,12 +471,25 @@ async def reminder_scheduler():
         try:
             with connect_db() as conn:
                 users = conn.execute("""
-                    SELECT user_id, enabled, reminders_per_day, timezone
-                    FROM reminder_settings WHERE enabled = 1
+                    SELECT p.user_id, COALESCE(r.enabled, 1) AS enabled,
+                           COALESCE(r.reminders_per_day, 1) AS reminders_per_day,
+                           COALESCE(r.timezone, 'Europe/Warsaw') AS timezone
+                    FROM (
+                        SELECT DISTINCT user_id FROM programs WHERE status='active'
+                        UNION
+                        SELECT DISTINCT user_id FROM program_events WHERE sent_at IS NULL
+                    ) p
+                    LEFT JOIN reminder_settings r ON r.user_id=p.user_id
                 """).fetchall()
 
             now_utc = datetime.now().astimezone()
             for settings in users:
+                uid = int(settings["user_id"])
+                evaluate_programs_for_user(uid, now_utc.astimezone(ZoneInfo(valid_timezone(settings["timezone"]))).date())
+                await dispatch_program_events(uid)
+            for settings in users:
+                if not bool(settings["enabled"]):
+                    continue
                 tz_name = valid_timezone(settings["timezone"])
                 local_now = now_utc.astimezone(ZoneInfo(tz_name))
                 local_time = local_now.strftime("%H:%M")
@@ -384,7 +506,7 @@ async def reminder_scheduler():
                     if already_sent:
                         continue
                     programs = conn.execute("""
-                        SELECT id, habit_name, duration_days, start_date
+                        SELECT id, user_id, habit_name, duration_days, start_date
                         FROM programs WHERE user_id = ? AND status = 'active'
                         ORDER BY id DESC
                     """, (settings["user_id"],)).fetchall()
@@ -402,8 +524,9 @@ async def reminder_scheduler():
                 for program in programs:
                     day = (local_now.date() - date.fromisoformat(program["start_date"])).days + 1
                     duration = int(program["duration_days"])
-                    if 1 <= day <= duration:
-                        active_lines.append(f"• {program['habit_name']} — день {day} из {duration}")
+                    max_days = MAX_CALENDAR_DAYS.get(duration, duration)
+                    if 1 <= day <= max_days:
+                        active_lines.append(f"• {program['habit_name']} — календарный день {day} · отметок {get_program_progress(program)[1]}/{duration}")
                 if not active_lines:
                     with connect_db() as conn:
                         conn.execute("DELETE FROM sent_reminders WHERE user_id = ? AND reminder_date = ? AND reminder_time = ?", (settings["user_id"], local_date, local_time))
@@ -528,10 +651,8 @@ def main_keyboard(has_program=False):
 def progress_text(program):
     day, completed, percentage = get_program_progress(program)
     duration = int(program["duration_days"])
-    state = (
-        f"Текущий календарный день: {day} из {duration}."
-        if day <= duration else "Срок программы истёк."
-    )
+    max_days, deadline = program_limits(program)
+    state = f"Календарный день: {day} из {max_days} (допустимый срок)."
     return (
         f"📊 Прогресс программы\n\n"
         f"🎯 Привычка: {program['habit_name']}\n"
@@ -572,7 +693,8 @@ def progress_list_text(programs):
     for i, program in enumerate(programs, 1):
         day, completed, percentage = get_program_progress(program)
         duration = int(program["duration_days"])
-        day_label = f"день {min(day, duration)} из {duration}" if day <= duration else "срок истёк"
+        max_days, _ = program_limits(program)
+        day_label = f"календарный день {min(day, max_days)} из {max_days}"
         parts.append(f"{i}. 🎯 {program['habit_name']}\n   📅 {day_label} · отметок {completed}/{duration} · {percentage}%")
     return "\n\n".join(parts)
 
@@ -582,7 +704,8 @@ async def cmd_checkin(message: types.Message):
     programs = get_active_programs(message.from_user.id)
     if len(programs) == 1:
         _, result = check_in(message.from_user.id, program_id=programs[0]["id"])
-        await message.answer(result, reply_markup=main_keyboard(True))
+        await message.answer(result, reply_markup=main_keyboard(bool(get_active_programs(message.from_user.id))))
+        await dispatch_program_events(message.from_user.id)
     elif programs:
         await message.answer("У тебя несколько программ. Открой Mini App и выбери нужную для отметки.", reply_markup=main_keyboard(True))
     else:
@@ -622,7 +745,8 @@ async def cb_checkin(callback: types.CallbackQuery):
         ok, result = False, "У тебя несколько программ. Открой Mini App и выбери программу для отметки."
     else:
         ok, result = False, "Активных программ нет. Открой Mini App."
-    await callback.message.answer(result, reply_markup=main_keyboard(bool(programs)))
+    await callback.message.answer(result, reply_markup=main_keyboard(bool(get_active_programs(callback.from_user.id))))
+    await dispatch_program_events(callback.from_user.id)
     await callback.answer("Готово" if ok else "Открой сообщение")
 
 
@@ -718,18 +842,24 @@ def verify_telegram_init_data(init_data):
 
 
 def _program_payload(program):
+    user_id = int(program["user_id"])
+    today = local_today(user_id)
     day, completed, percentage = get_program_progress(program)
+    max_days, deadline = program_limits(program)
     with connect_db() as conn:
-        checked_today = conn.execute("SELECT 1 FROM daily_checkins WHERE program_id = ? AND checkin_date = ?", (program["id"], date.today().isoformat())).fetchone() is not None
+        checked_today = conn.execute("SELECT 1 FROM daily_checkins WHERE program_id=? AND checkin_date=?", (program["id"], today.isoformat())).fetchone() is not None
     return {
         "id": int(program["id"]), "habit_name": program["habit_name"],
         "duration_days": int(program["duration_days"]), "start_date": program["start_date"],
         "day_number": day, "completed": completed, "percentage": percentage,
-        "checked_today": checked_today,
+        "checked_today": checked_today, "max_calendar_days": max_days,
+        "days_left": max(0, (deadline - today).days),
+        "deadline_date": deadline.isoformat(),
     }
 
 
 def api_state_for_user(user_id):
+    evaluate_programs_for_user(user_id)
     programs = [_program_payload(p) for p in get_active_programs(user_id)]
     settings = get_reminder_settings(user_id)
     return {"program": programs[0] if programs else None, "programs": programs, "reminders": settings}
@@ -797,6 +927,7 @@ async def api_action(data: ActionRequest):
 
     if data.action == "checkin":
         ok, message = check_in(user_id, data.note, data.program_id)
+        await dispatch_program_events(user_id)
         return {"ok": ok, "message": message, **api_state_for_user(user_id)}
 
     if data.action == "reset":
