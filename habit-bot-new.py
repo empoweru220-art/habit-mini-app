@@ -24,8 +24,6 @@ from pydantic import BaseModel, Field
 # ============================================================
 
 TOKEN = os.getenv("BOT_TOKEN", "").strip()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_APP_URL = os.getenv("WEB_APP_URL", "").strip()
@@ -53,16 +51,6 @@ if not TOKEN:
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
-gemini_client = None
-if GEMINI_API_KEY:
-    try:
-        from google import genai
-        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-        logger.info("Клиент Gemini инициализирован.")
-    except Exception:
-        logger.exception("Gemini недоступен; будут работать резервные подсказки.")
-
 
 # ============================================================
 # БАЗА ДАННЫХ
@@ -440,69 +428,85 @@ async def reminder_scheduler():
 # НАСТАВНИК
 # ============================================================
 
-def fallback_advice(habit_name, user_message=""):
-    text = user_message.lower()
+# Локальная база советов наставника: совет выбирается по конкретной программе и дню.
+MENTOR_ADVICE = {
+    "💧 Водный баланс (2л)": [
+        "Распредели воду равномерно в течение дня. Не пытайся выпить весь объём за один раз.",
+        "Поставь стакан воды на видное место. Видимая подсказка помогает вспомнить о привычке.",
+        "Свяжи воду с уже привычными действиями: после пробуждения и во время перерывов.",
+        "Держи бутылку рядом, когда работаешь. Пей регулярно, ориентируясь также на жажду.",
+        "Проверь, удобно ли тебе пить в течение дня. Лучше небольшие порции, чем попытка наверстать вечером.",
+        "Подготовь воду заранее перед работой или выходом из дома — так меньше поводов забыть.",
+        "Оцени, что помогало вспоминать о воде на этой неделе, и оставь самый удобный способ.",
+    ],
+    "📵 Цифровой детокс": [
+        "Убери телефон подальше на 20 минут и займись одним делом без переключений.",
+        "Отключи необязательные уведомления хотя бы на один рабочий блок.",
+        "Перед тем как открыть приложение, остановись и спроси себя, зачем ты туда заходишь.",
+        "Выбери одно время для проверки сообщений вместо постоянных коротких проверок.",
+        "Во время еды или разговора положи телефон экраном вниз и вне досягаемости.",
+        "Убери самые отвлекающие приложения с главного экрана, чтобы открыть их было не так автоматически.",
+        "Заметь, в какие моменты чаще всего тянешься к телефону, и придумай замену на эти 5 минут.",
+    ],
+    "🌙 Ранний сон (до 23:00)": [
+        "Начни вечернее замедление заранее: приглуши свет и подготовь вещи на завтра.",
+        "Выбери постоянный сигнал к завершению дня — например, будильник на подготовку ко сну.",
+        "За 30 минут до сна отложи рабочие дела и по возможности убери телефон от кровати.",
+        "Если трудно лечь рано, сдвигай время отхода ко сну постепенно, небольшими шагами.",
+        "Подготовь спальню заранее: проветри комнату и убери лишние дела из поля зрения.",
+        "Сохраняй спокойный повторяющийся ритуал перед сном, даже если день был загруженным.",
+        "Подумай, что больше всего мешало лечь вовремя, и измени сегодня только один фактор.",
+    ],
+    "📖 Чтение (20 минут)": [
+        "Положи книгу на видное место и выдели 20 минут без телефона.",
+        "Начни с небольшого отрезка: несколько страниц достаточно, чтобы войти в чтение.",
+        "Привяжи чтение к стабильному моменту дня — например, после завтрака или перед сном.",
+        "Если отвлекаешься, убери телефон из комнаты и вернись к следующему абзацу без самокритики.",
+        "Заранее выбери, что будешь читать сегодня, чтобы не тратить время на поиск.",
+        "После чтения запиши одну мысль или идею, которая запомнилась.",
+        "Сделай короткий обзор недели: когда читать было легче всего и как повторить это завтра.",
+    ],
+    "🎯 Фокус / Спорт": [
+        "Выбери одно конкретное дело или короткую тренировку. Сформулируй, что будет считаться завершением.",
+        "Разбей задачу на первый шаг, который можно выполнить за пять минут.",
+        "Убери один главный источник отвлечения и поработай коротким непрерывным блоком.",
+        "Если цель — движение, подготовь одежду или инвентарь заранее, чтобы снизить порог начала.",
+        "Сделай небольшой перерыв после завершённого блока, а затем реши, нужен ли следующий.",
+        "Не пытайся компенсировать пропущенную тренировку чрезмерной нагрузкой — вернись к посильному шагу.",
+        "Отметь, какое время и формат лучше всего сработали, и используй это наблюдение на следующей неделе.",
+    ],
+}
 
-    if any(w in text for w in ("забыл", "пропустил", "сорвал", "не сделал")):
-        return (
-            "Не нужно компенсировать пропуск чрезмерной нагрузкой. "
-            "Вернись к привычке при ближайшей возможности и продолжай "
-            "фиксировать реальные результаты."
-        )
-    if any(w in text for w in ("лень", "тяжело", "нет сил", "не хочется")):
-        return (
-            "Уменьши действие до самого простого выполнимого шага. "
-            "Сейчас важнее устойчивость, чем идеальный объём."
-        )
-    return (
-        f"По привычке «{habit_name}»: выбери конкретное действие на сегодня, "
-        "привяжи его к понятному моменту дня и вечером честно отметь результат."
-    )
+def advice_for_program(program):
+    habit_name = str(program["habit_name"])
+    advice_list = MENTOR_ADVICE.get(habit_name)
+    if not advice_list:
+        # Безопасный тематический fallback для программ, которых ещё нет в локальной базе.
+        advice_list = [
+            f"По привычке «{habit_name}»: выбери небольшой конкретный шаг на сегодня и привяжи его к понятному моменту дня.",
+            f"Для программы «{habit_name}» уменьши действие до простого выполнимого шага, который реально повторить сегодня.",
+            f"По программе «{habit_name}» заранее подготовь всё необходимое и вечером оцени, что получилось.",
+        ]
+    day_number, _, _ = get_program_progress(program)
+    index = (max(1, min(day_number, int(program["duration_days"]))) - 1) % len(advice_list)
+    return advice_list[index]
 
 
-async def ask_mentor(user_id, user_message):
-    program = get_active_program(user_id)
-    habit_name = program["habit_name"] if program else "не выбрана"
+async def ask_mentor(user_id, user_message="", program_id=None):
+    """Возвращает локальный совет именно для выбранной активной программы."""
+    program = get_active_program(user_id, program_id)
+    if not program:
+        return "Сначала открой активную программу в Mini App.", False
 
-    if not gemini_client:
-        return fallback_advice(habit_name, user_message), False
-
-    prompt = (
-        "Ты — ИИ-наставник приложения «Лаборатория привычек». "
-        "Отвечай по-русски, конкретно, без морализаторства и медицинских диагнозов. "
-        "Не обещай гарантированного формирования привычки за фиксированный срок.\n"
-        f"Привычка: {habit_name}\n"
-        f"Сообщение пользователя: {user_message[:2000]}\n"
-        "Ответь практично, обычно в 3–6 предложениях."
-    )
-
-    try:
-        response = await asyncio.wait_for(
-            asyncio.to_thread(
-                gemini_client.models.generate_content,
-                model=GEMINI_MODEL,
-                contents=prompt,
-            ),
-            timeout=25,
-        )
-        answer = (response.text or "").strip()
-        if answer:
-            with connect_db() as conn:
-                now = datetime.now().isoformat(timespec="seconds")
-                conn.execute("""
-                    INSERT INTO mentor_history (user_id, role, message, created_at)
-                    VALUES (?, 'user', ?, ?)
-                """, (user_id, user_message[:2000], now))
-                conn.execute("""
-                    INSERT INTO mentor_history (user_id, role, message, created_at)
-                    VALUES (?, 'assistant', ?, ?)
-                """, (user_id, answer[:5000], now))
-                conn.commit()
-            return answer, True
-    except Exception:
-        logger.exception("Ошибка Gemini.")
-
-    return fallback_advice(habit_name, user_message), False
+    answer = advice_for_program(program)
+    with connect_db() as conn:
+        now = datetime.now().isoformat(timespec="seconds")
+        conn.execute("""
+            INSERT INTO mentor_history (user_id, role, message, created_at)
+            VALUES (?, 'assistant', ?, ?)
+        """, (user_id, answer[:5000], now))
+        conn.commit()
+    return answer, False
 
 
 # ============================================================
@@ -594,16 +598,15 @@ async def cmd_reset(message: types.Message):
 
 @dp.message(Command("mentor"))
 async def cmd_mentor(message: types.Message):
-    question = message.text.partition(" ")[2].strip()
-    if not question:
-        await message.answer(
-            "Напиши вопрос после команды, например:\n"
-            "/mentor Как вернуться к привычке после пропуска?"
-        )
+    programs = get_active_programs(message.from_user.id)
+    if not programs:
+        await message.answer("Сначала выбери привычку в Mini App.")
         return
-    answer, used_ai = await ask_mentor(message.from_user.id, question)
-    prefix = "🧠 ИИ-наставник\n\n" if used_ai else "💡 Автоматическая подсказка\n\n"
-    await message.answer(prefix + answer)
+    if len(programs) > 1:
+        await message.answer("Чтобы получить совет именно по нужной привычке, открой её карточку в Mini App и нажми «🧠 Спросить наставника».")
+        return
+    answer, _ = await ask_mentor(message.from_user.id, program_id=programs[0]["id"])
+    await message.answer("🧠 Совет наставника\n\n" + answer)
 
 
 @dp.callback_query(F.data == "progress")
@@ -745,11 +748,6 @@ async def lifespan(app):
             scheduler_task, polling_task, return_exceptions=True
         )
         await bot.session.close()
-        if gemini_client:
-            try:
-                gemini_client.close()
-            except Exception:
-                pass
 
 
 app = FastAPI(title="Лаборатория привычек", lifespan=lifespan)
@@ -808,8 +806,8 @@ async def api_action(data: ActionRequest):
         return {"ok": True, "message": "Программа завершена. История сохранена.", **state}
 
     if data.action == "mentor":
-        answer, used_ai = await ask_mentor(user_id, data.message.strip())
-        return {"ok": True, "message": answer, "used_ai": used_ai,
+        answer, _ = await ask_mentor(user_id, data.message.strip(), data.program_id)
+        return {"ok": True, "message": answer, "used_ai": False,
                 **api_state_for_user(user_id)}
 
     if data.action == "reminder_settings":
