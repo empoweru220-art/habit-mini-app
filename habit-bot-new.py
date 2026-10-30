@@ -598,15 +598,12 @@ async def cmd_reset(message: types.Message):
 
 @dp.message(Command("mentor"))
 async def cmd_mentor(message: types.Message):
-    programs = get_active_programs(message.from_user.id)
-    if not programs:
+    program = get_active_program(message.from_user.id)
+    if not program:
         await message.answer("Сначала выбери привычку в Mini App.")
         return
-    if len(programs) > 1:
-        await message.answer("Чтобы получить совет именно по нужной привычке, открой её карточку в Mini App и нажми «🧠 Спросить наставника».")
-        return
-    answer, _ = await ask_mentor(message.from_user.id, program_id=programs[0]["id"])
-    await message.answer("🧠 Совет наставника\n\n" + answer)
+    answer, _ = await ask_mentor(message.from_user.id, program_id=program["id"])
+    await message.answer(f"🧠 Совет наставника — {program['habit_name']}\n\n" + answer)
 
 
 @dp.callback_query(F.data == "progress")
@@ -650,11 +647,17 @@ async def cb_reset(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "mentor")
 async def cb_mentor(callback: types.CallbackQuery):
+    program = get_active_program(callback.from_user.id)
+    if not program:
+        await callback.message.answer("Сначала выбери привычку в Mini App.")
+        await callback.answer()
+        return
+    answer, _ = await ask_mentor(callback.from_user.id, program_id=program["id"])
     await callback.message.answer(
-        "Напиши вопрос командой:\n"
-        "/mentor Как не бросить привычку?"
+        f"🧠 Совет наставника — {program['habit_name']}\n\n" + answer,
+        reply_markup=main_keyboard(True),
     )
-    await callback.answer()
+    await callback.answer("Совет готов")
 
 
 # ============================================================
