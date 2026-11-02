@@ -249,6 +249,30 @@ def get_active_programs(user_id):
 MAX_CALENDAR_DAYS = {7: 11, 14: 21, 21: 32, 30: 45}
 
 
+def get_reminder_settings(user_id):
+    """Совместимый общий accessor: часовой пояс пользователя.
+
+    Частота и включение напоминаний хранятся отдельно для каждой программы
+    в program_reminder_settings. Здесь возвращаем часовой пояс последней
+    активной программы, а если его ещё нет — старое значение пользователя.
+    Глобальные напоминания не включаем.
+    """
+    with connect_db() as conn:
+        row = conn.execute("""
+            SELECT r.timezone
+            FROM program_reminder_settings r
+            JOIN programs p ON p.id = r.program_id AND p.user_id = r.user_id
+            WHERE r.user_id = ? AND p.status = 'active'
+            ORDER BY p.id DESC LIMIT 1
+        """, (user_id,)).fetchone()
+        if not row:
+            row = conn.execute("SELECT timezone FROM reminder_settings WHERE user_id = ?",
+                               (user_id,)).fetchone()
+    timezone_name = row["timezone"] if row and row["timezone"] else "Europe/Warsaw"
+    return {"enabled": False, "reminders_per_day": 1,
+            "timezone": valid_timezone(timezone_name)}
+
+
 def user_timezone(user_id):
     settings = get_reminder_settings(user_id)
     return ZoneInfo(valid_timezone(settings.get("timezone", "Europe/Warsaw")))
