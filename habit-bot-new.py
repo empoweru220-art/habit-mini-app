@@ -632,6 +632,159 @@ async def ask_mentor(user_id, user_message="", program_id=None):
     return answer, False
 
 
+
+# ============================================================
+# РЕЗЕРВНОЕ КОПИРОВАНИЕ В GOOGLE DRIVE
+# ============================================================
+
+import base64
+import tempfile
+import urllib.request
+from urllib.error import URLError, HTTPError
+
+BACKUP_WEBHOOK_URL = os.getenv("BACKUP_WEBHOOK_URL", "").strip()
+BACKUP_SECRET = os.getenv("BACKUP_SECRET", "").strip()
+BACKUP_TIMEZONE = ZoneInfo("Europe/Warsaw")
+BACKUP_HOUR = 3
+BACKUP_MINUTE = 0
+
+
+def create_sqlite_snapshot(destination_path):
+    """Создаёт согласованную копию работающей SQLite-базы."""
+    if not DB_PATH.exists():
+        raise FileNotFoundError(f"Файл базы данных не найден: {DB_PATH}")
+
+    source_conn = sqlite3.connect(DB_PATH, timeout=30)
+    target_conn = sqlite3.connect(destination_path, timeout=30)
+    try:
+        source_conn.backup(target_conn)
+        result = target_conn.execute("PRAGMA integrity_check").fetchone()
+        if not result or result[0] != "ok":
+            raise RuntimeError(f"Проверка целостности SQLite не пройдена: {result}")
+    finally:
+        target_conn.close()
+        source_conn.close()
+
+
+def upload_backup_to_drive(snapshot_path, filename):
+    """Отправляет SQLite-файл в Google Drive через Apps Script."""
+    if not BACKUP_WEBHOOK_URL or not BACKUP_SECRET:
+        raise RuntimeError(
+            "Не заданы BACKUP_WEBHOOK_URL и/или BACKUP_SECRET. "
+            "Резервное копирование отключено."
+        )
+
+    content = Path(snapshot_path).read_bytes()
+    payload = {
+        "secret": BACKUP_SECRET,
+        "filename": filename,
+        "content": base64.b64encode(content).decode("ascii"),
+    }
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        BACKUP_WEBHOOK_URL,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=120) as response:
+        response_text = response.read().decode("utf-8", errors="replace")
+
+    try:
+        result = json.loads(response_text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "Google Apps Script вернул ответ не в формате JSON. "
+            "Проверь публикацию веб-приложения и доступ Anyone."
+        ) from exc
+
+    if not result.get("ok"):
+        # Не включаем тело запроса или секрет в журнал.
+        raise RuntimeError(
+            "Google Drive не подтвердил сохранение резервной копии: "
+            + str(result.get("error", "неизвестная ошибка"))[:300]
+        )
+
+    return result
+
+
+def perform_database_backup():
+    """Создаёт и отправляет одну проверенную резервную копию."""
+    timestamp = datetime.now(BACKUP_TIMEZONE).strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"habit_lab_{timestamp}.db"
+
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix="habit_lab_backup_",
+            suffix=".db",
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+
+        create_sqlite_snapshot(temp_path)
+        result = upload_backup_to_drive(temp_path, filename)
+        logger.info(
+            "Резервная копия сохранена в Google Drive: %s (fileId=%s)",
+            result.get("filename", filename),
+            result.get("fileId", "не указан"),
+        )
+        return True
+    finally:
+        if temp_path and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                logger.warning("Не удалось удалить временную копию: %s", temp_path)
+
+
+def seconds_until_next_backup():
+    now = datetime.now(BACKUP_TIMEZONE)
+    next_run = now.replace(
+        hour=BACKUP_HOUR,
+        minute=BACKUP_MINUTE,
+        second=0,
+        microsecond=0,
+    )
+    if next_run <= now:
+        next_run += timedelta(days=1)
+    return max(1, (next_run - now).total_seconds())
+
+
+async def backup_scheduler():
+    """
+    Первая попытка через 30 секунд после запуска.
+    При ошибке — повтор каждые 15 минут.
+    После успеха — ежедневно в 03:00 по времени Europe/Warsaw.
+    """
+    if not BACKUP_WEBHOOK_URL or not BACKUP_SECRET:
+        logger.warning(
+            "Резервное копирование не запущено: "
+            "не заданы BACKUP_WEBHOOK_URL и BACKUP_SECRET."
+        )
+        return
+
+    await asyncio.sleep(30)
+
+    while True:
+        try:
+            success = await asyncio.to_thread(perform_database_backup)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Ошибка резервного копирования базы данных.")
+            success = False
+
+        if success:
+            delay = seconds_until_next_backup()
+        else:
+            delay = 15 * 60
+
+        await asyncio.sleep(delay)
+
+
+
 # ============================================================
 # TELEGRAM-БОТ
 # ============================================================
@@ -868,6 +1021,7 @@ def api_state_for_user(user_id):
 async def lifespan(app):
     init_db()
     scheduler_task = asyncio.create_task(reminder_scheduler())
+    backup_task = asyncio.create_task(backup_scheduler())
     polling_task = asyncio.create_task(
         dp.start_polling(bot, handle_signals=False)
     )
@@ -876,9 +1030,10 @@ async def lifespan(app):
         yield
     finally:
         scheduler_task.cancel()
+        backup_task.cancel()
         polling_task.cancel()
         await asyncio.gather(
-            scheduler_task, polling_task, return_exceptions=True
+            scheduler_task, backup_task, polling_task, return_exceptions=True
         )
         await bot.session.close()
 
