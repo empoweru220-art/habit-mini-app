@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 # ============================================================
 
 TOKEN = os.getenv("BOT_TOKEN", "").strip()
+ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "5918974308"))
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_APP_URL = os.getenv("WEB_APP_URL", "").strip()
@@ -869,6 +870,82 @@ async def cmd_start(message: types.Message):
 async def cmd_progress(message: types.Message):
     programs = get_active_programs(message.from_user.id)
     await message.answer(progress_list_text(programs) if programs else "Активных программ нет. Открой Mini App.")
+
+
+
+@dp.message(Command("admin"))
+async def cmd_admin(message: types.Message):
+    """Закрытая статистика проекта. Доступ только владельцу ADMIN_USER_ID."""
+    if not message.from_user or message.from_user.id != ADMIN_USER_ID:
+        actual_id = message.from_user.id if message.from_user else 0
+        logger.warning("Отказ в доступе к /admin для Telegram ID %s", actual_id)
+        await message.answer("⛔ Эта команда доступна только администратору.")
+        return
+
+    with connect_db() as conn:
+        total_users = conn.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT user_id FROM user_habits
+                UNION
+                SELECT user_id FROM programs
+            )
+        """).fetchone()[0]
+
+        active_users = conn.execute("""
+            SELECT COUNT(DISTINCT user_id) FROM programs
+            WHERE status = 'active'
+        """).fetchone()[0]
+
+        total_programs = conn.execute("SELECT COUNT(*) FROM programs").fetchone()[0]
+        active_programs = conn.execute("""
+            SELECT COUNT(*) FROM programs WHERE status = 'active'
+        """).fetchone()[0]
+        completed_programs = conn.execute("""
+            SELECT COUNT(*) FROM programs WHERE status = 'completed'
+        """).fetchone()[0]
+        interrupted_programs = conn.execute("""
+            SELECT COUNT(*) FROM programs WHERE status = 'interrupted'
+        """).fetchone()[0]
+        ended_programs = conn.execute("""
+            SELECT COUNT(*) FROM programs WHERE status = 'ended'
+        """).fetchone()[0]
+        total_checkins = conn.execute("""
+            SELECT COUNT(*) FROM daily_checkins
+        """).fetchone()[0]
+        popular = conn.execute("""
+            SELECT habit_name, COUNT(*) AS total,
+                   SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active
+            FROM programs
+            GROUP BY habit_name
+            ORDER BY total DESC, habit_name
+            LIMIT 10
+        """).fetchall()
+
+    lines = [
+        "🔐 Статистика «Лаборатории привычек»",
+        "",
+        f"👥 Всего пользователей: {total_users}",
+        f"🟢 Участников с активными программами: {active_users}",
+        "",
+        f"📚 Всего запусков программ: {total_programs}",
+        f"🟢 Активных программ: {active_programs}",
+        f"🏁 Завершённых программ: {completed_programs}",
+        f"⏸ Прерванных программ: {interrupted_programs}",
+        f"↩️ Завершённых вручную: {ended_programs}",
+        f"✅ Всего ежедневных отметок: {total_checkins}",
+    ]
+
+    if popular:
+        lines.extend(["", "📊 Программы по популярности:"])
+        for row in popular:
+            lines.append(
+                f"• {row['habit_name']}: {row['total']} запусков "
+                f"(активных: {row['active'] or 0})"
+            )
+    else:
+        lines.extend(["", "Пока нет ни одной запущенной программы."])
+
+    await message.answer("\n".join(lines))
 
 
 def progress_list_text(programs):
