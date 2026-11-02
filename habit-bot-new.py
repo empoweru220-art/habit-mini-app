@@ -34,7 +34,8 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 PORT = int(os.getenv("PORT", "8000"))
 PROGRAM_DURATIONS = {
-    "Похудение без жёстких диет": {21},
+    "Стройность без жёстких диет": {21},
+    "Похудение без жёстких диет": {21},  # старое название для совместимости с историей
     "Ходьба 30 минут": {7, 14, 21},
     "Домашняя тренировка 30 минут": {14, 21},
     "Сон по режиму": {14, 21},
@@ -51,7 +52,6 @@ REMINDER_SCHEDULES = {
     1: ["20:00"],
     2: ["09:00", "20:00"],
     3: ["09:00", "14:30", "20:00"],
-    4: ["09:00", "12:40", "16:20", "20:00"],
     5: ["09:00", "11:45", "14:30", "17:15", "20:00"],
 }
 
@@ -145,6 +145,31 @@ def init_db():
             sent_at TEXT NOT NULL,
             UNIQUE(user_id, reminder_date, reminder_time)
         );
+
+        -- Новые настройки напоминаний принадлежат конкретной программе.
+        -- Старые таблицы reminder_settings/sent_reminders сохраняются без изменений.
+        CREATE TABLE IF NOT EXISTS program_reminder_settings (
+            program_id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            reminders_per_day INTEGER NOT NULL DEFAULT 1,
+            timezone TEXT NOT NULL DEFAULT 'Europe/Warsaw',
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(program_id) REFERENCES programs(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS program_sent_reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            program_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            reminder_date TEXT NOT NULL,
+            reminder_time TEXT NOT NULL,
+            sent_at TEXT NOT NULL,
+            UNIQUE(program_id, reminder_date, reminder_time),
+            FOREIGN KEY(program_id) REFERENCES programs(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_program_reminder_due
+        ON program_reminder_settings(enabled, user_id);
 
         CREATE TABLE IF NOT EXISTS program_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -458,122 +483,213 @@ def valid_timezone(name):
         return "Europe/Warsaw"
 
 
-def get_reminder_settings(user_id):
+def get_program_reminder_settings(user_id, program_id):
+    """Возвращает настройки напоминаний конкретной активной программы."""
     with connect_db() as conn:
         row = conn.execute("""
-            SELECT * FROM reminder_settings WHERE user_id = ?
-        """, (user_id,)).fetchone()
+            SELECT enabled, reminders_per_day, timezone
+            FROM program_reminder_settings
+            WHERE user_id = ? AND program_id = ?
+        """, (user_id, program_id)).fetchone()
 
     if not row:
         return {
-            "enabled": True,
+            "enabled": False,
             "reminders_per_day": 1,
             "timezone": "Europe/Warsaw",
         }
 
+    count = int(row["reminders_per_day"])
+    if count not in (1, 2, 3, 5):
+        count = 1
     return {
         "enabled": bool(row["enabled"]),
-        "reminders_per_day": int(row["reminders_per_day"]),
-        "timezone": row["timezone"],
+        "reminders_per_day": count,
+        "timezone": valid_timezone(row["timezone"]),
     }
 
 
-def save_reminder_settings(user_id, enabled, count, timezone_name):
-    count = max(1, min(5, int(count)))
+def save_program_reminder_settings(user_id, program_id, enabled, count, timezone_name):
+    count = int(count)
+    if count not in (1, 2, 3, 5):
+        raise ValueError("Выбери частоту: 1, 2, 3 или 5 раз в день.")
     timezone_name = valid_timezone(timezone_name)
     now = datetime.now().isoformat(timespec="seconds")
 
     with connect_db() as conn:
+        program = conn.execute("""
+            SELECT id FROM programs
+            WHERE id = ? AND user_id = ? AND status = 'active'
+        """, (program_id, user_id)).fetchone()
+        if not program:
+            raise ValueError("Активная программа не найдена.")
+        # Сохраняем часовой пояс пользователя и для календарных отметок.
+        # Старый глобальный переключатель напоминаний больше не используется планировщиком.
         conn.execute("""
             INSERT INTO reminder_settings
             (user_id, enabled, reminders_per_day, timezone, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, 0, 1, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
+                timezone = excluded.timezone,
+                updated_at = excluded.updated_at
+        """, (user_id, timezone_name, now))
+        conn.execute("""
+            INSERT INTO program_reminder_settings
+            (program_id, user_id, enabled, reminders_per_day, timezone, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(program_id) DO UPDATE SET
+                user_id = excluded.user_id,
                 enabled = excluded.enabled,
                 reminders_per_day = excluded.reminders_per_day,
                 timezone = excluded.timezone,
                 updated_at = excluded.updated_at
-        """, (user_id, int(enabled), count, timezone_name, now))
+        """, (program_id, user_id, int(bool(enabled)), count, timezone_name, now))
         conn.commit()
 
-    return get_reminder_settings(user_id)
+    return get_program_reminder_settings(user_id, program_id)
+
+
+def reminder_message_for_program(habit_name):
+    """Короткий призыв выполнить действие и затем отметить его в приложении."""
+    messages = {
+        "Стройность без жёстких диет": (
+            "Время сделать ещё один шаг к своей цели! 💚",
+            "Выбери запланированное на сегодня полезное действие и спокойно выполни его. Даже небольшой последовательный шаг приближает к цели."
+        ),
+        "Похудение без жёстких диет": (
+            "Время сделать ещё один шаг к своей цели! 💚",
+            "Выбери запланированное на сегодня полезное действие, выполни его и не забудь отметить результат в «Лаборатории привычек»."
+        ),
+        "Ходьба 30 минут": (
+            "Пора на прогулку! 🚶",
+            "Найди время для своих 30 минут ходьбы. Прогулка в комфортном темпе — уже хороший шаг."
+        ),
+        "Домашняя тренировка 30 минут": (
+            "Время уделить внимание себе! 💪",
+            "Выполни запланированную тренировку в комфортном темпе. Учитывай самочувствие и не забывай о восстановлении."
+        ),
+        "Сон по режиму": (
+            "Пора подготовиться к полноценному отдыху! 🌙",
+            "Начни свой вечерний ритуал и следуй выбранному режиму. Подготовься к отдыху без спешки."
+        ),
+        "Фокус: 25 минут без отвлечений": (
+            "Время сосредоточиться! 🎯",
+            "Отложи отвлекающие факторы и удели 25 минут важному делу. Начни с одного рабочего блока."
+        ),
+        "Чтение (20 минут)": (
+            "Найди 20 минут для чтения! 📖",
+            "Открой книгу и удели ей 20 минут. Выбери место, где ничто не будет отвлекать."
+        ),
+        "Цифровой детокс": (
+            "Пора отложить телефон! 📵",
+            "Устрой себе запланированный перерыв от экрана. Отложи телефон и переключись на занятие вне сети."
+        ),
+        "Питьевой режим": (
+            "Сделай паузу и позаботься о себе! 💧",
+            "Если сейчас хочется пить, выпей воды в комфортном для себя количестве. Ориентируйся на свои потребности."
+        ),
+    }
+    return messages.get(habit_name, (
+        "Пора сделать шаг к своей цели! 💪",
+        "Выполни запланированное на сегодня действие и не забудь отметить результат в «Лаборатории привычек». У тебя всё получится!"
+    ))
 
 
 async def reminder_scheduler():
-    """Отправляет одно напоминание со списком всех активных программ пользователя."""
+    """Отправляет отдельные напоминания для каждой программы с её настройками."""
     while True:
         try:
+            now_utc = datetime.now().astimezone()
             with connect_db() as conn:
-                users = conn.execute("""
-                    SELECT p.user_id, COALESCE(r.enabled, 1) AS enabled,
-                           COALESCE(r.reminders_per_day, 1) AS reminders_per_day,
-                           COALESCE(r.timezone, 'Europe/Warsaw') AS timezone
+                active_users = conn.execute("""
+                    SELECT p.user_id, COALESCE(r.timezone, 'Europe/Warsaw') AS timezone
                     FROM (
-                        SELECT DISTINCT user_id FROM programs WHERE status='active'
+                        SELECT DISTINCT user_id FROM programs WHERE status = 'active'
                         UNION
                         SELECT DISTINCT user_id FROM program_events WHERE sent_at IS NULL
                     ) p
-                    LEFT JOIN reminder_settings r ON r.user_id=p.user_id
+                    LEFT JOIN reminder_settings r ON r.user_id = p.user_id
+                """).fetchall()
+            # Служебные события программ продолжают обрабатываться независимо от напоминаний.
+            for row in active_users:
+                uid = int(row["user_id"])
+                local_date = now_utc.astimezone(ZoneInfo(valid_timezone(row["timezone"]))).date()
+                evaluate_programs_for_user(uid, local_date)
+                await dispatch_program_events(uid)
+
+            with connect_db() as conn:
+                due_programs = conn.execute("""
+                    SELECT p.id AS program_id, p.user_id, p.habit_name,
+                           p.duration_days, p.start_date,
+                           COALESCE(r.reminders_per_day, 1) AS reminders_per_day,
+                           COALESCE(r.timezone, 'Europe/Warsaw') AS timezone
+                    FROM programs p
+                    LEFT JOIN program_reminder_settings r
+                      ON r.program_id = p.id AND r.user_id = p.user_id
+                    WHERE p.status = 'active' AND COALESCE(r.enabled, 0) = 1
+                    ORDER BY p.user_id, p.id
                 """).fetchall()
 
-            now_utc = datetime.now().astimezone()
-            for settings in users:
-                uid = int(settings["user_id"])
-                evaluate_programs_for_user(uid, now_utc.astimezone(ZoneInfo(valid_timezone(settings["timezone"]))).date())
-                await dispatch_program_events(uid)
-            for settings in users:
-                if not bool(settings["enabled"]):
-                    continue
-                tz_name = valid_timezone(settings["timezone"])
+            for program in due_programs:
+                uid = int(program["user_id"])
+                tz_name = valid_timezone(program["timezone"])
                 local_now = now_utc.astimezone(ZoneInfo(tz_name))
                 local_time = local_now.strftime("%H:%M")
                 local_date = local_now.date().isoformat()
-                times = REMINDER_SCHEDULES.get(int(settings["reminders_per_day"]), ["20:00"])
-                if local_time not in times:
+                count = int(program["reminders_per_day"])
+                if count not in (1, 2, 3, 5):
+                    count = 1
+                if local_time not in REMINDER_SCHEDULES[count]:
                     continue
 
+                # Если отметка уже поставлена сегодня, дальнейшие уведомления по этой
+                # программе до конца локального дня не отправляются.
                 with connect_db() as conn:
-                    already_sent = conn.execute("""
-                        SELECT 1 FROM sent_reminders
-                        WHERE user_id = ? AND reminder_date = ? AND reminder_time = ?
-                    """, (settings["user_id"], local_date, local_time)).fetchone()
-                    if already_sent:
+                    checked_today = conn.execute("""
+                        SELECT 1 FROM daily_checkins
+                        WHERE program_id = ? AND checkin_date = ?
+                    """, (program["program_id"], local_date)).fetchone()
+                    if checked_today:
                         continue
-                    programs = conn.execute("""
-                        SELECT id, user_id, habit_name, duration_days, start_date
-                        FROM programs WHERE user_id = ? AND status = 'active'
-                        ORDER BY id DESC
-                    """, (settings["user_id"],)).fetchall()
-                    if not programs:
+
+                    cursor = conn.execute("""
+                        INSERT OR IGNORE INTO program_sent_reminders
+                        (program_id, user_id, reminder_date, reminder_time, sent_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (program["program_id"], uid, local_date, local_time,
+                          datetime.now().isoformat(timespec="seconds")))
+                    if cursor.rowcount == 0:
                         continue
-                    # Уникальный ключ — пользователь + локальная дата + время:
-                    # одному человеку отправляется одно сообщение со всеми привычками.
-                    conn.execute("""INSERT INTO sent_reminders
-                        (user_id, reminder_date, reminder_time, sent_at)
-                        VALUES (?, ?, ?, ?)""", (settings["user_id"], local_date, local_time, datetime.now().isoformat(timespec="seconds")))
                     conn.commit()
 
-                lines = ["⏰ Напоминание из «Лаборатории привычек»", ""]
-                active_lines = []
-                for program in programs:
-                    day = (local_now.date() - date.fromisoformat(program["start_date"])).days + 1
-                    duration = int(program["duration_days"])
-                    max_days = MAX_CALENDAR_DAYS.get(duration, duration)
-                    if 1 <= day <= max_days:
-                        active_lines.append(f"• {program['habit_name']} — календарный день {day} · отметок {get_program_progress(program)[1]}/{duration}")
-                if not active_lines:
+                day = (local_now.date() - date.fromisoformat(program["start_date"])).days + 1
+                duration = int(program["duration_days"])
+                max_days = MAX_CALENDAR_DAYS.get(duration, duration)
+                if not (1 <= day <= max_days):
                     with connect_db() as conn:
-                        conn.execute("DELETE FROM sent_reminders WHERE user_id = ? AND reminder_date = ? AND reminder_time = ?", (settings["user_id"], local_date, local_time))
+                        conn.execute("""
+                            DELETE FROM program_sent_reminders
+                            WHERE program_id = ? AND reminder_date = ? AND reminder_time = ?
+                        """, (program["program_id"], local_date, local_time))
                         conn.commit()
                     continue
-                lines.extend(active_lines)
-                lines.extend(["", "Открой Mini App и отметь выполненные привычки."])
+
+                title, body = reminder_message_for_program(program["habit_name"])
+                message = (
+                    f"⏰ Напоминание · {program['habit_name']}\n\n"
+                    f"{title}\n\n{body}\n\n"
+                    "После выполнения открой «Лабораторию привычек» и нажми «Отметить сегодня» — "
+                    "так сохранится твой прогресс."
+                )
                 try:
-                    await bot.send_message(settings["user_id"], "\n".join(lines), reply_markup=main_keyboard(True))
+                    await bot.send_message(uid, message, reply_markup=main_keyboard(True))
                 except Exception:
-                    logger.exception("Не удалось отправить напоминание пользователю %s", settings["user_id"])
+                    logger.exception("Не удалось отправить напоминание по программе %s пользователю %s", program["program_id"], uid)
                     with connect_db() as conn:
-                        conn.execute("DELETE FROM sent_reminders WHERE user_id = ? AND reminder_date = ? AND reminder_time = ?", (settings["user_id"], local_date, local_time))
+                        conn.execute("""
+                            DELETE FROM program_sent_reminders
+                            WHERE program_id = ? AND reminder_date = ? AND reminder_time = ?
+                        """, (program["program_id"], local_date, local_time))
                         conn.commit()
         except asyncio.CancelledError:
             raise
@@ -587,7 +703,7 @@ async def reminder_scheduler():
 # ============================================================
 
 DAILY_ADVICE = {
-    "Похудение без жёстких диет": [
+    "Стройность без жёстких диет": [
         ("Запиши обычный рацион за день без попытки сразу всё исправить.", "Добавь к одному приёму пищи овощи или другой привычный источник клетчатки.", "Не пропускай еду ради компенсации вчерашнего дня."),
         ("Выбери один простой завтрак, после которого тебе комфортно несколько часов.", "Ешь сидя и по возможности без экрана — так легче заметить насыщение.", "Сравни голод до еды и после неё, не оценивая себя."),
         ("Проверь, какие напитки дают много сахара, и выбери один вариант замены.", "Поставь воду или несладкий напиток в доступное место.", "Не запрещай любимые продукты: оценивай общий баланс, а не один продукт."),
@@ -785,6 +901,10 @@ EXTRA_EXTENSION = {
         ("Подведи итог дополнительной недели и оставь подходящий ритм.", "Сохрани простую привычку, не привязанную к жёсткой цифре.", "Ориентируйся на потребности организма и медицинские рекомендации."),
     ],
 }
+
+# Совместимость с уже запущенными программами под прежним названием.
+DAILY_ADVICE["Похудение без жёстких диет"] = DAILY_ADVICE["Стройность без жёстких диет"]
+
 
 def daily_advice_for_program(program):
     name = str(program["habit_name"])
@@ -1038,7 +1158,7 @@ class ActionRequest(InitDataRequest):
     message: str = ""
     target_bedtime: str = ""
     reminders_per_day: int = 1
-    reminders_enabled: bool = True
+    reminders_enabled: bool = False
     timezone: str = "Europe/Warsaw"
 
 
@@ -1088,8 +1208,10 @@ def _program_payload(program):
         checked_today = conn.execute("SELECT 1 FROM daily_checkins WHERE program_id=? AND checkin_date=?", (program["id"], today.isoformat())).fetchone() is not None
         setting = conn.execute("SELECT target_bedtime FROM program_settings WHERE program_id=?", (program["id"],)).fetchone()
     advice = daily_advice_for_program(program)
+    reminders = get_program_reminder_settings(user_id, int(program["id"]))
     return {
         "id": int(program["id"]), "habit_name": program["habit_name"],
+        "reminders": reminders,
         "duration_days": int(program["duration_days"]), "start_date": program["start_date"],
         "day_number": day, "completed": completed, "percentage": percentage,
         "checked_today": checked_today, "max_calendar_days": max_days,
@@ -1336,13 +1458,19 @@ async def api_action(data: ActionRequest):
         return {"ok": True, "message": "Программа завершена. История сохранена.", **state}
 
     if data.action == "reminder_settings":
-        settings = save_reminder_settings(
-            user_id,
-            data.reminders_enabled,
-            data.reminders_per_day,
-            data.timezone,
-        )
-        return {"ok": True, "message": "Настройки напоминаний сохранены.",
+        if data.program_id is None:
+            raise HTTPException(status_code=400, detail="Не выбрана программа для настройки напоминаний.")
+        try:
+            settings = save_program_reminder_settings(
+                user_id,
+                data.program_id,
+                data.reminders_enabled,
+                data.reminders_per_day,
+                data.timezone,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, "message": "Напоминания для этой программы сохранены.",
                 "reminders": settings, **api_state_for_user(user_id)}
 
     raise HTTPException(status_code=400, detail="Неизвестное действие")
