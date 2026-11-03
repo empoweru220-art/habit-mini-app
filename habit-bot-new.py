@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import html
 import hmac
 import json
 import logging
@@ -29,6 +30,7 @@ ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "5918974308"))
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_APP_URL = os.getenv("WEB_APP_URL", "").strip()
+TELEGRAM_CHANNEL_URL = os.getenv("TELEGRAM_CHANNEL_URL", "https://t.me/motivin_habits").strip()
 DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "data" / "habits.db")))
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -184,6 +186,44 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_program_events_pending
         ON program_events(user_id, sent_at);
+
+        -- Атрибуция источников. Старые таблицы и пользовательские данные не меняются.
+        CREATE TABLE IF NOT EXISTS user_attribution (
+            user_id INTEGER PRIMARY KEY,
+            first_source TEXT NOT NULL DEFAULT 'unknown',
+            first_start_at TEXT,
+            last_source TEXT NOT NULL DEFAULT 'unknown',
+            last_start_at TEXT,
+            username TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_attribution_source_date
+        ON user_attribution(first_source, first_start_at);
+
+        CREATE TABLE IF NOT EXISTS bot_start_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            start_payload TEXT,
+            started_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_bot_start_events_source_date
+        ON bot_start_events(source, started_at);
+        CREATE INDEX IF NOT EXISTS idx_bot_start_events_user_date
+        ON bot_start_events(user_id, started_at);
+        """)
+
+        # Старые пользователи получают нейтральный источник "unknown":
+        # дата и рекламный источник их первоначального запуска неизвестны.
+        conn.execute("""
+            INSERT OR IGNORE INTO user_attribution
+                (user_id, first_source, first_start_at, last_source, last_start_at, username)
+            SELECT user_id, 'unknown', NULL, 'unknown', NULL, MAX(username)
+            FROM (
+                SELECT user_id, username FROM user_habits
+                UNION ALL
+                SELECT user_id, NULL AS username FROM programs
+            )
+            GROUP BY user_id
         """)
 
         # Миграция старых активных привычек. Выполняется только,
@@ -993,6 +1033,70 @@ def daily_advice_for_program(program):
 # TELEGRAM-БОТ
 # ============================================================
 
+SOURCE_ALIASES = {
+    "youtube": "youtube",
+    "youtube_bot": "youtube",
+    "instagram": "instagram",
+    "instagram_bot": "instagram",
+    "channel": "telegram_channel",
+    "telegram": "telegram_channel",
+    "telegram_channel": "telegram_channel",
+}
+
+
+def normalize_start_source(payload):
+    """Нормализует Telegram deep-link payload; пустой payload = прямой запуск."""
+    raw = (payload or "").strip().lower()
+    if not raw:
+        return "direct", None
+    return SOURCE_ALIASES.get(raw, "other"), raw[:64]
+
+
+def record_bot_start(user, payload):
+    """Сохраняет первый источник и все последующие события /start."""
+    source, raw_payload = normalize_start_source(payload)
+    now = datetime.now().isoformat(timespec="seconds")
+    username = user.username or user.full_name or ""
+    is_new = False
+
+    with connect_db() as conn:
+        row = conn.execute(
+            "SELECT first_source, first_start_at FROM user_attribution WHERE user_id = ?",
+            (user.id,),
+        ).fetchone()
+
+        if row is None:
+            conn.execute("""
+                INSERT INTO user_attribution
+                    (user_id, first_source, first_start_at, last_source, last_start_at, username)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (user.id, source, now, source, now, username))
+            is_new = True
+        else:
+            # Для старых пользователей с неизвестным источником принимаем первую
+            # достоверную campaign-ссылку после внедрения аналитики.
+            if row["first_source"] == "unknown" and source not in ("direct", "other"):
+                conn.execute("""
+                    UPDATE user_attribution
+                    SET first_source = ?, first_start_at = ?, last_source = ?,
+                        last_start_at = ?, username = ?
+                    WHERE user_id = ?
+                """, (source, now, source, now, username, user.id))
+            else:
+                conn.execute("""
+                    UPDATE user_attribution
+                    SET last_source = ?, last_start_at = ?, username = ?
+                    WHERE user_id = ?
+                """, (source, now, username, user.id))
+
+        conn.execute("""
+            INSERT INTO bot_start_events (user_id, source, start_payload, started_at)
+            VALUES (?, ?, ?, ?)
+        """, (user.id, source, raw_payload, now))
+
+    return is_new, source
+
+
 def main_keyboard(has_program=False):
     builder = InlineKeyboardBuilder()
     if WEB_APP_URL:
@@ -1001,6 +1105,8 @@ def main_keyboard(has_program=False):
         builder.button(text="📊 Мои программы", callback_data="progress")
         builder.button(text="✅ Отметить сегодня", callback_data="checkin")
         builder.button(text="🏠 В главное меню", callback_data="home")
+    if TELEGRAM_CHANNEL_URL:
+        builder.button(text="📣 Канал Motivin", url=TELEGRAM_CHANNEL_URL)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -1020,20 +1126,47 @@ def progress_text(program):
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
+    payload = None
+    if message.text:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) > 1:
+            payload = parts[1].strip()
+
+    is_new, source = record_bot_start(message.from_user, payload)
     programs = get_active_programs(message.from_user.id)
-    program = programs[0] if programs else None
-    if program:
+
+    if is_new:
         text = (
-            f"С возвращением в «Лабораторию привычек»!\n"
-            f"Активная привычка: {program['habit_name']}.\n"
-            f"Длительность: {program['duration_days']} дней."
+            "👋 <b>Добро пожаловать в «Лабораторию привычек»!</b>\n\n"
+            "Ты здесь не случайно. Возможно, ты уже не раз пытался что-то изменить, "
+            "но со временем возвращался к прежнему режиму.\n\n"
+            "Дело не всегда в отсутствии силы воли. Часто проблема в самой системе "
+            "повседневных действий.\n\n"
+            "Здесь мы будем менять её постепенно — через небольшие действия, "
+            "последовательность и контроль прогресса.\n\n"
+            "🎯 <b>Выбери направление и начни свою программу:</b>\n\n"
+            "• ⚖️ Стройность без жёстких диет\n"
+            "• 🚶 Ходьба 30 минут\n"
+            "• 💪 Домашняя тренировка 30 минут\n"
+            "• 🌙 Сон по режиму\n"
+            "• 🧠 Фокус: 25 минут без отвлечений\n\n"
+            "Нажми «Открыть Лабораторию» ниже, чтобы выбрать программу.\n\n"
+            "<b>Не нужно менять всё сразу. Начни с одного шага.</b>"
+        )
+    elif programs:
+        program = programs[0]
+        text = (
+            "С возвращением в «Лабораторию привычек»!\n"
+            f"Активная программа: {html.escape(str(program['habit_name']))}.\n"
+            f"Длительность: {program['duration_days']} дней.\n\n"
+            "Продолжай отмечать ежедневный прогресс."
         )
     else:
         text = (
-            "Добро пожаловать в «Лабораторию привычек»!\n"
-            "Открой Mini App и выбери привычку."
+            "С возвращением в «Лабораторию привычек»!\n\n"
+            "Открой Лабораторию и выбери программу, с которой хочешь начать."
         )
-    await message.answer(text, reply_markup=main_keyboard(bool(programs)))
+    await message.answer(text, reply_markup=main_keyboard(bool(programs)), parse_mode="HTML")
 
 
 @dp.message(Command("progress"))
@@ -1041,6 +1174,89 @@ async def cmd_progress(message: types.Message):
     programs = get_active_programs(message.from_user.id)
     await message.answer(progress_list_text(programs) if programs else "Активных программ нет. Открой Mini App.")
 
+
+
+@dp.message(Command("stats"))
+async def cmd_stats(message: types.Message):
+    """Атрибуция источников: /stats, /stats 7 или /stats 30. Только администратор."""
+    if not message.from_user or message.from_user.id != ADMIN_USER_ID:
+        await message.answer("⛔ Эта команда доступна только администратору.")
+        return
+
+    parts = (message.text or "").split()
+    period = 0
+    if len(parts) > 1:
+        try:
+            period = int(parts[1])
+        except ValueError:
+            await message.answer("Использование: /stats, /stats 7 или /stats 30")
+            return
+        if period not in (7, 30):
+            await message.answer("Доступные периоды: /stats 7 и /stats 30. Для всей истории: /stats")
+            return
+
+    since = (datetime.now() - timedelta(days=period)).isoformat(timespec="seconds") if period else None
+    where_users = "WHERE first_start_at >= ?" if since else ""
+    where_events = "WHERE started_at >= ?" if since else ""
+    where_programs = "WHERE p.created_at >= ?" if since else ""
+    params = (since,) if since else ()
+
+    with connect_db() as conn:
+        first_sources = conn.execute(f"""
+            SELECT first_source AS source, COUNT(*) AS users
+            FROM user_attribution {where_users}
+            GROUP BY first_source ORDER BY users DESC
+        """, params).fetchall()
+        starts = conn.execute(f"""
+            SELECT source, COUNT(*) AS starts, COUNT(DISTINCT user_id) AS unique_users
+            FROM bot_start_events {where_events}
+            GROUP BY source ORDER BY starts DESC
+        """, params).fetchall()
+        program_sources = conn.execute(f"""
+            SELECT COALESCE(a.first_source, 'unknown') AS source,
+                   COUNT(*) AS program_starts,
+                   COUNT(DISTINCT p.user_id) AS users
+            FROM programs p
+            LEFT JOIN user_attribution a ON a.user_id = p.user_id
+            {where_programs}
+            GROUP BY COALESCE(a.first_source, 'unknown')
+            ORDER BY program_starts DESC
+        """, params).fetchall()
+        total_tracked = conn.execute("SELECT COUNT(*) FROM user_attribution").fetchone()[0]
+
+    title = "📊 Источники пользователей"
+    if period:
+        title += f" за последние {period} дней"
+    else:
+        title += " — за всё время"
+    lines = [title, "", f"👥 Пользователей в базе атрибуции: {total_tracked}"]
+
+    lines.extend(["", "🧭 <b>Первый источник пользователей:</b>"])
+    if first_sources:
+        labels = {"youtube": "YouTube", "instagram": "Instagram", "telegram_channel": "Telegram-канал", "direct": "Прямой запуск", "other": "Другие ссылки", "unknown": "Неизвестно / до аналитики"}
+        for row in first_sources:
+            lines.append(f"• {labels.get(row['source'], row['source'])}: {row['users']} пользователей")
+    else:
+        lines.append("Пока нет данных за выбранный период.")
+
+    lines.extend(["", "🚀 <b>Запуски бота по ссылкам:</b>"])
+    if starts:
+        labels = {"youtube": "YouTube", "instagram": "Instagram", "telegram_channel": "Telegram-канал", "direct": "Прямой запуск", "other": "Другие ссылки"}
+        for row in starts:
+            lines.append(f"• {labels.get(row['source'], row['source'])}: {row['starts']} запусков / {row['unique_users']} уникальных пользователей")
+    else:
+        lines.append("Запусков пока нет.")
+
+    lines.extend(["", "🎯 <b>Запуски программ по первому источнику:</b>"])
+    if program_sources:
+        labels = {"youtube": "YouTube", "instagram": "Instagram", "telegram_channel": "Telegram-канал", "direct": "Прямой запуск", "other": "Другие ссылки", "unknown": "Неизвестно / до аналитики"}
+        for row in program_sources:
+            lines.append(f"• {labels.get(row['source'], row['source'])}: {row['program_starts']} программ / {row['users']} пользователей")
+    else:
+        lines.append("Запусков программ пока нет.")
+
+    lines.extend(["", "ℹ️ Клики по ссылкам без запуска бота здесь не учитываются. Подписки на канал также считаются отдельно и пока не подтверждаются этой статистикой."])
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 @dp.message(Command("admin"))
@@ -1054,11 +1270,7 @@ async def cmd_admin(message: types.Message):
 
     with connect_db() as conn:
         total_users = conn.execute("""
-            SELECT COUNT(*) FROM (
-                SELECT user_id FROM user_habits
-                UNION
-                SELECT user_id FROM programs
-            )
+            SELECT COUNT(*) FROM user_attribution
         """).fetchone()[0]
 
         active_users = conn.execute("""
