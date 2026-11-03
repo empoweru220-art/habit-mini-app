@@ -533,11 +533,11 @@ def get_program_reminder_settings(user_id, program_id):
     }
 
 
-def save_program_reminder_settings(user_id, program_id, enabled, count, timezone_name):
+def save_program_reminder_settings(user_id, program_id, enabled, count, timezone_name=None):
+    """Сохраняет настройки конкретной программы, не меняя часовой пояс без запроса."""
     count = int(count)
     if count not in (1, 2, 3, 5):
         raise ValueError("Выбери частоту: 1, 2, 3 или 5 раз в день.")
-    timezone_name = valid_timezone(timezone_name)
     now = datetime.now().isoformat(timespec="seconds")
 
     with connect_db() as conn:
@@ -547,16 +547,37 @@ def save_program_reminder_settings(user_id, program_id, enabled, count, timezone
         """, (program_id, user_id)).fetchone()
         if not program:
             raise ValueError("Активная программа не найдена.")
-        # Сохраняем часовой пояс пользователя и для календарных отметок.
-        # Старый глобальный переключатель напоминаний больше не используется планировщиком.
-        conn.execute("""
-            INSERT INTO reminder_settings
-            (user_id, enabled, reminders_per_day, timezone, updated_at)
-            VALUES (?, 0, 1, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                timezone = excluded.timezone,
-                updated_at = excluded.updated_at
-        """, (user_id, timezone_name, now))
+
+        # Обычное сохранение переключателя/частоты не должно менять часовой пояс.
+        if timezone_name is None:
+            existing = conn.execute("""
+                SELECT timezone FROM program_reminder_settings
+                WHERE user_id = ? AND program_id = ?
+            """, (user_id, program_id)).fetchone()
+            if existing and existing["timezone"]:
+                timezone_name = existing["timezone"]
+            else:
+                existing = conn.execute("""
+                    SELECT timezone FROM reminder_settings WHERE user_id = ?
+                """, (user_id,)).fetchone()
+                timezone_name = (
+                    existing["timezone"]
+                    if existing and existing["timezone"]
+                    else "Europe/Warsaw"
+                )
+        else:
+            timezone_name = valid_timezone(timezone_name)
+            # Общий часовой пояс обновляем только при явной передаче значения.
+            conn.execute("""
+                INSERT INTO reminder_settings
+                (user_id, enabled, reminders_per_day, timezone, updated_at)
+                VALUES (?, 0, 1, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    timezone = excluded.timezone,
+                    updated_at = excluded.updated_at
+            """, (user_id, timezone_name, now))
+
+        timezone_name = valid_timezone(timezone_name)
         conn.execute("""
             INSERT INTO program_reminder_settings
             (program_id, user_id, enabled, reminders_per_day, timezone, updated_at)
@@ -582,7 +603,7 @@ def reminder_message_for_program(habit_name):
         ),
         "Похудение без жёстких диет": (
             "Время сделать ещё один шаг к своей цели! 💚",
-            "Выбери запланированное на сегодня полезное действие, выполни его и не забудь отметить результат в «Лаборатории привычек»."
+            "Выбери запланированное на сегодня полезное действие и спокойно выполни его. Даже небольшой последовательный шаг приближает к цели."
         ),
         "Ходьба 30 минут": (
             "Пора на прогулку! 🚶",
@@ -699,8 +720,13 @@ async def reminder_scheduler():
                     continue
 
                 title, body = reminder_message_for_program(program["habit_name"])
+                display_name = (
+                    "Стройность без жёстких диет"
+                    if program["habit_name"] == "Похудение без жёстких диет"
+                    else program["habit_name"]
+                )
                 message = (
-                    f"⏰ Напоминание · {program['habit_name']}\n\n"
+                    f"⏰ Напоминание · {display_name}\n\n"
                     f"{title}\n\n{body}\n\n"
                     "После выполнения открой «Лабораторию привычек» и нажми «Отметить сегодня» — "
                     "так сохранится твой прогресс."
@@ -1183,7 +1209,7 @@ class ActionRequest(InitDataRequest):
     target_bedtime: str = ""
     reminders_per_day: int = 1
     reminders_enabled: bool = False
-    timezone: str = "Europe/Warsaw"
+    timezone: str | None = None
 
 
 def verify_telegram_init_data(init_data):
@@ -1233,8 +1259,13 @@ def _program_payload(program):
         setting = conn.execute("SELECT target_bedtime FROM program_settings WHERE program_id=?", (program["id"],)).fetchone()
     advice = daily_advice_for_program(program)
     reminders = get_program_reminder_settings(user_id, int(program["id"]))
+    display_name = (
+        "Стройность без жёстких диет"
+        if program["habit_name"] == "Похудение без жёстких диет"
+        else program["habit_name"]
+    )
     return {
-        "id": int(program["id"]), "habit_name": program["habit_name"],
+        "id": int(program["id"]), "habit_name": display_name,
         "reminders": reminders,
         "duration_days": int(program["duration_days"]), "start_date": program["start_date"],
         "day_number": day, "completed": completed, "percentage": percentage,
@@ -1494,7 +1525,20 @@ async def api_action(data: ActionRequest):
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        return {"ok": True, "message": "Напоминания для этой программы сохранены.",
-                "reminders": settings, **api_state_for_user(user_id)}
+
+        # Сначала формируем актуальное состояние: индивидуальные настройки
+        # находятся внутри соответствующего элемента массива programs.
+        state = api_state_for_user(user_id)
+        updated_program = next(
+            (p for p in state["programs"] if int(p["id"]) == int(data.program_id)),
+            None,
+        )
+        return {
+            **state,
+            "ok": True,
+            "message": "Напоминания для этой программы сохранены.",
+            "saved_reminders": settings,
+            "program": updated_program or state["program"],
+        }
 
     raise HTTPException(status_code=400, detail="Неизвестное действие")
